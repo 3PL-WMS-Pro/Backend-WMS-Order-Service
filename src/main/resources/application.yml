@@ -1,0 +1,86 @@
+spring:
+  application:
+    name: wms-order-service
+
+  # MongoDB Configuration (Multi-tenant central database)
+  data:
+    mongodb:
+      uri: ${MONGODB_URI:mongodb://flybizdigi:FlyBizDigi%40123@cloud.leadtorev.com:27170/wms_pro_tenants?authSource=admin&readPreference=primary}
+      auto-index-creation: true
+
+  # File Upload Configuration
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 50MB
+
+server:
+  port: 6018
+
+# Eureka Configuration
+eureka:
+  client:
+    service-url:
+      defaultZone: http://localhost:6000/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: true
+    instance-id: ${spring.application.name}:${server.port}
+
+# Logging Configuration
+logging:
+  level:
+    com.wmspro.order: DEBUG
+    org.springframework.data.mongodb: DEBUG
+    org.springframework.cloud.openfeign: DEBUG
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    file: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
+
+# Management Endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,env,beans
+  endpoint:
+    health:
+      show-details: always
+
+# Custom Service Configuration
+wms:
+  order:
+    fulfillment:
+      default-execution-approach: SEPARATED_PICKING
+      auto-generate-task: true
+    validation:
+      enforce-inventory-validation: true
+      enforce-customer-validation: true
+
+  # Service Discovery Configuration
+  services:
+    product-service:
+      name: wms-product-service
+    inventory-service:
+      name: wms-inventory-service
+    task-service:
+      name: wms-task-service
+    tenant-service:
+      name: wms-tenant-service
+
+# Tenant Service Configuration
+app:
+  tenant:
+    service:
+      url: ${TENANT_SERVICE_URL:http://localhost:6010}
+
+# Feign Configuration
+feign:
+  client:
+    config:
+      default:
+        connect-timeout: 5000
+        read-timeout: 10000
+  httpclient:
+    enabled: true
