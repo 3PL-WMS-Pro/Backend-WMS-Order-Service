@@ -5,6 +5,8 @@ import com.wmspro.common.jwt.JwtTokenExtractor
 import com.wmspro.order.dto.CreateOfrRequest
 import com.wmspro.order.dto.OfrResponse
 import com.wmspro.order.dto.PageResponse
+import com.wmspro.order.dto.ChangeOfrStatusToPickupDoneRequest
+import com.wmspro.order.dto.ChangeOfrStatusToPickupDoneResponse
 import com.wmspro.order.enums.FulfillmentStatus
 import com.wmspro.order.service.OrderFulfillmentService
 import jakarta.servlet.http.HttpServletRequest
@@ -126,6 +128,40 @@ class OrderFulfillmentController(
             ResponseEntity
                 .status(status)
                 .body(ApiResponse.error(e.message ?: "Failed to retrieve OFR"))
+        }
+    }
+
+    /**
+     * API 141: Change OFR Status to "PICKUP_DONE"
+     * PUT /api/v1/orders/fulfillment-requests/{fulfillmentRequestId}/pickup-done
+     *
+     * Updates OFR status after picking completion and creates Pack_Move task if needed
+     */
+    @PutMapping("/{fulfillmentRequestId}/pickup-done")
+    fun changeOfrStatusToPickupDone(
+        @PathVariable fulfillmentRequestId: String,
+        @RequestBody request: ChangeOfrStatusToPickupDoneRequest,
+        @RequestHeader("Authorization") authToken: String
+    ): ResponseEntity<ApiResponse<ChangeOfrStatusToPickupDoneResponse>> {
+        logger.info("PUT /api/v1/orders/fulfillment-requests/$fulfillmentRequestId/pickup-done")
+
+        return try {
+            val response = orderFulfillmentService.changeOfrStatusToPickupDone(fulfillmentRequestId, request, authToken)
+
+            ResponseEntity.ok(
+                ApiResponse.success(response, "OFR status updated to PICKUP_DONE successfully")
+            )
+        } catch (e: Exception) {
+            logger.error("Error changing OFR status to PICKUP_DONE: ${e.message}", e)
+            val status = if (e.message?.contains("not found", ignoreCase = true) == true) {
+                HttpStatus.NOT_FOUND
+            } else {
+                HttpStatus.INTERNAL_SERVER_ERROR
+            }
+
+            ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(e.message ?: "Failed to update OFR status"))
         }
     }
 }

@@ -182,3 +182,37 @@ data class PageResponse<T>(
     val hasNext: Boolean,
     val hasPrevious: Boolean
 )
+
+/**
+ * API 141: Change OFR Status to "PICKUP_DONE" - Request
+ */
+data class ChangeOfrStatusToPickupDoneRequest(
+    val taskCode: String? = null,
+    val itemsToPick: List<ItemsToPickDto>
+)
+
+data class ItemsToPickDto(
+    val storageItemId: Long?,
+    val itemBarcode: String?,
+    val skuId: Long?,
+    val itemType: String,
+    val totalQuantityRequired: Int?,
+    val quantityPicked: Int?,
+    val picked: Boolean,
+    val pickedAt: LocalDateTime?
+)
+
+/**
+ * API 141: Change OFR Status to "PICKUP_DONE" - Response
+ */
+data class ChangeOfrStatusToPickupDoneResponse(
+    val fulfillmentRequestId: String,
+    val fulfillmentStatus: String,
+    val updatedAt: LocalDateTime,
+    val nextTask: NextTaskDto?
+)
+
+data class NextTaskDto(
+    val taskCode: String,
+    val taskType: String
+)

@@ -27,7 +27,8 @@ class OrderFulfillmentService(
     private val sequenceGeneratorService: SequenceGeneratorService,
     private val productServiceClient: ProductServiceClient,
     private val inventoryServiceClient: InventoryServiceClient,
-    private val taskServiceClient: TaskServiceClient
+    private val taskServiceClient: TaskServiceClient,
+    private val jwtTokenExtractor: com.wmspro.common.jwt.JwtTokenExtractor
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -44,7 +45,7 @@ class OrderFulfillmentService(
      * 6. Update OFR status to ALLOCATED and save
      *
      * TODO: FIFO & LIFO has been applied as a temporary arrangement and the proper
-     * implementation is awaited until further notice.
+     *  implementation is awaited until further notice.
      */
     fun createOrderFulfillmentRequest(request: CreateOfrRequest, createdBy: String?, authToken: String): OrderFulfillmentRequest {
         logger.info("Creating Order Fulfillment Request for account: {}", request.accountId)
@@ -433,5 +434,157 @@ class OrderFulfillmentService(
 
         return ofrRepository.findByFulfillmentId(fulfillmentId)
             .orElseThrow { OrderFulfillmentRequestNotFoundException("Order Fulfillment Request not found: $fulfillmentId") }
+    }
+
+    /**
+     * API 141: Change OFR Status to "PICKUP_DONE"
+     * Updates OFR status after picking completion and creates Pack_Move task if needed
+     */
+    fun changeOfrStatusToPickupDone(
+        fulfillmentRequestId: String,
+        request: ChangeOfrStatusToPickupDoneRequest,
+        authToken: String
+    ): ChangeOfrStatusToPickupDoneResponse {
+        logger.info("Changing OFR status to PICKUP_DONE for: $fulfillmentRequestId")
+
+        // Step 1: Fetch OFR
+        val ofr = ofrRepository.findByFulfillmentId(fulfillmentRequestId)
+            .orElseThrow { OrderFulfillmentRequestNotFoundException("Order Fulfillment Request not found: $fulfillmentRequestId") }
+
+        // Step 2: Update line_items and allocated_items based on items_to_pick
+        for (pickedItem in request.itemsToPick) {
+            // Find matching line item
+            val lineItem = ofr.lineItems.find { lineItem ->
+                when (lineItem.itemType) {
+                    ItemType.BOX, ItemType.PALLET -> lineItem.itemBarcode == pickedItem.itemBarcode
+                    ItemType.SKU_ITEM -> lineItem.skuId == pickedItem.skuId
+                }
+            }
+
+            if (lineItem != null) {
+                // Update quantityPicked in line item
+                when (lineItem.itemType) {
+                    ItemType.BOX, ItemType.PALLET -> {
+                        if (pickedItem.picked) {
+                            lineItem.quantityPicked = 1
+                        }
+                    }
+                    ItemType.SKU_ITEM -> {
+                        lineItem.quantityPicked = pickedItem.quantityPicked ?: 0
+                    }
+                }
+
+                // Update or create allocated_items
+                if (pickedItem.storageItemId != null) {
+                    val existingAllocated = lineItem.allocatedItems.find { it.storageItemId == pickedItem.storageItemId }
+
+                    if (existingAllocated != null) {
+                        // Update existing allocated item
+                        existingAllocated.picked = pickedItem.picked
+                        existingAllocated.pickedAt = pickedItem.pickedAt
+                        existingAllocated.pickedBy = jwtTokenExtractor.extractUsername(authToken)
+                    } else {
+                        // Create new allocated item
+                        lineItem.allocatedItems.add(
+                            AllocatedItem(
+                                storageItemId = pickedItem.storageItemId,
+                                location = "PACKING_ZONE", // Will be updated by inventory service
+                                picked = pickedItem.picked,
+                                pickedAt = pickedItem.pickedAt,
+                                pickedBy = jwtTokenExtractor.extractUsername(authToken)
+                            )
+                        )
+                    }
+                }
+            }
+        }
+
+        // Step 3: Update OFR status to PICKED
+        ofr.fulfillmentStatus = FulfillmentStatus.PICKED
+
+        // Step 4: Add status_history entry
+        val username = jwtTokenExtractor.extractUsername(authToken) ?: "SYSTEM"
+        ofr.statusHistory.add(
+            StatusHistory(
+                status = FulfillmentStatus.PICKED,
+                timestamp = LocalDateTime.now(),
+                user = username,
+                automated = true,
+                notes = null
+            )
+        )
+
+        // Step 5: Save OFR
+        val updatedOfr = ofrRepository.save(ofr)
+        logger.info("OFR status updated to PICKED: $fulfillmentRequestId")
+
+        // Step 6: Check execution_approach and create Pack_Move task if needed
+        var nextTask: NextTaskDto? = null
+
+        if (ofr.executionApproach == ExecutionApproach.SEPARATED_PICKING) {
+            logger.info("Creating PACK_MOVE task for SEPARATED_PICKING approach")
+
+            try {
+                // Build Pack Move task request
+                val packMoveItems = request.itemsToPick.map { item ->
+                    PackMoveItemDto(
+                        storageItemId = item.storageItemId ?: 0L,
+                        itemBarcode = item.itemBarcode ?: "",
+                        skuId = item.skuId,
+                        itemType = item.itemType
+                    )
+                }
+
+                val createTaskRequest = CreateTaskRequest(
+                    taskType = "PACK_MOVE",
+                    warehouseId = "DEFAULT", // TODO: Get from OFR context
+                    assignedTo = null,
+                    accountIds = listOf(ofr.accountId),
+                    priority = when (ofr.priority) {
+                        Priority.URGENT -> TaskPriority.HIGH
+                        Priority.STANDARD -> TaskPriority.NORMAL
+                        Priority.ECONOMY -> TaskPriority.LOW
+                    },
+                    packMoveDetails = PackMoveDetailsDto(
+                        fulfillmentRequestId = fulfillmentRequestId,
+                        itemsToVerify = packMoveItems
+                    )
+                )
+
+                val taskResponse = taskServiceClient.createTask(createTaskRequest, authToken)
+
+                if (taskResponse.success) {
+                    val taskData = taskResponse.data
+                    if (taskData != null) {
+                        nextTask = NextTaskDto(
+                            taskCode = taskData.taskCode,
+                            taskType = "PACK_MOVE"
+                        )
+
+                        // Update OFR with Pack_Move task reference
+                        updatedOfr.packMoveTaskId = taskData.taskCode
+                        ofrRepository.save(updatedOfr)
+
+                        logger.info("PACK_MOVE task created: ${taskData.taskCode}")
+                    } else {
+                        logger.error("Failed to create PACK_MOVE task: Task data is null")
+                        throw TaskCreationFailedException("Failed to create PACK_MOVE task: Task data is null")
+                    }
+                } else {
+                    logger.error("Failed to create PACK_MOVE task: ${taskResponse.message}")
+                    throw TaskCreationFailedException("Failed to create PACK_MOVE task: ${taskResponse.message}")
+                }
+            } catch (e: Exception) {
+                logger.error("Error creating PACK_MOVE task: ${e.message}", e)
+                throw TaskCreationFailedException("Error creating PACK_MOVE task: ${e.message}")
+            }
+        }
+
+        return ChangeOfrStatusToPickupDoneResponse(
+            fulfillmentRequestId = updatedOfr.fulfillmentId,
+            fulfillmentStatus = updatedOfr.fulfillmentStatus.name,
+            updatedAt = LocalDateTime.now(),
+            nextTask = nextTask
+        )
     }
 }

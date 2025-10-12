@@ -10,6 +10,7 @@ data class CreateTaskRequest(
     val accountIds: List<Long>? = null,
     val priority: TaskPriority? = null,
     val pickingDetails: PickingDetailsDto? = null,
+    val packMoveDetails: PackMoveDetailsDto? = null,
     val pickPackMoveDetails: PickPackMoveDetailsDto? = null
 )
 
@@ -31,6 +32,18 @@ data class PickingItemDto(
 data class PickupLocationDto(
     val locationCode: String,
     val itemRange: String
+)
+
+data class PackMoveDetailsDto(
+    val fulfillmentRequestId: String,
+    val itemsToVerify: List<PackMoveItemDto>
+)
+
+data class PackMoveItemDto(
+    val storageItemId: Long,
+    val itemBarcode: String,
+    val skuId: Long?,
+    val itemType: String
 )
 
 data class PickPackMoveDetailsDto(
