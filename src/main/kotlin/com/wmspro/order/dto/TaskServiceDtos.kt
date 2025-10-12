@@ -1,5 +1,6 @@
 package com.wmspro.order.dto
 
+import com.wmspro.order.enums.AwbCondition
 import com.wmspro.order.enums.TaskPriority
 
 // Task Service DTOs
@@ -36,14 +37,17 @@ data class PickupLocationDto(
 
 data class PackMoveDetailsDto(
     val fulfillmentRequestId: String,
-    val itemsToVerify: List<PackMoveItemDto>
+    val itemsToVerify: List<PackMoveItemDto>,
+    val awbCondition: AwbCondition
 )
 
 data class PackMoveItemDto(
     val storageItemId: Long,
     val itemBarcode: String,
     val skuId: Long?,
-    val itemType: String
+    val itemType: String,
+    val packingType: String,
+    val verified: Boolean = false
 )
 
 data class PickPackMoveDetailsDto(

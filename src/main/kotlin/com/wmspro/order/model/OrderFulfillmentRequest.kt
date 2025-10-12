@@ -46,7 +46,7 @@ data class OrderFulfillmentRequest(
     val packages: MutableList<Package> = mutableListOf(),
 
     // Shipping configuration
-    val shippingDetails: ShippingDetails? = null,
+    val shippingDetails: ShippingDetails,
 
     // Status tracking
     val statusHistory: MutableList<StatusHistory> = mutableListOf(),
@@ -167,12 +167,15 @@ data class AssignedItem(
 )
 
 data class ShippingDetails(
+    val awbCondition: AwbCondition = AwbCondition.CREATE_FOR_CUSTOMER,
+
     val carrier: String? = null,
     val requestedServiceType: ServiceType? = null,
     val selectedServiceCode: String? = null,
 
     val shipmentId: String? = null,
     val awbNumber: String? = null,
+    val awbPdf: String? = null,  // Base64 encoded AWB PDF
     val trackingUrl: String? = null,
     val shippingLabelPdf: String? = null
 )

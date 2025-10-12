@@ -83,10 +83,10 @@ class OrderFulfillmentService(
                 postalCode = request.shippingAddress.postalCode,
                 phone = request.shippingAddress.phone
             ),
-            shippingDetails = request.shippingDetails?.let {
+            shippingDetails = request.shippingDetails.let {
                 ShippingDetails(
-                    carrier = it.carrier,
-                    requestedServiceType = it.requestedServiceType
+                    carrier = it?.carrier,
+                    requestedServiceType = it?.requestedServiceType
                 )
             },
             orderValue = request.orderValue?.let {
@@ -531,7 +531,8 @@ class OrderFulfillmentService(
                         storageItemId = item.storageItemId ?: 0L,
                         itemBarcode = item.itemBarcode ?: "",
                         skuId = item.skuId,
-                        itemType = item.itemType
+                        itemType = item.itemType,
+                        packingType = "Standard Packaging (Up-to the user)" // TODO: Need to fetch the packagingType from the SKU Details
                     )
                 }
 
@@ -547,7 +548,8 @@ class OrderFulfillmentService(
                     },
                     packMoveDetails = PackMoveDetailsDto(
                         fulfillmentRequestId = fulfillmentRequestId,
-                        itemsToVerify = packMoveItems
+                        itemsToVerify = packMoveItems,
+                        awbCondition = ofr.shippingDetails.awbCondition
                     )
                 )
 
