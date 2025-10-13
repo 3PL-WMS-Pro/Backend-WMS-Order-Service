@@ -27,7 +27,7 @@ interface InventoryServiceClient {
     @PostMapping("/ids-by-barcodes")
     fun getStorageItemIdsByBarcodes(
         @RequestBody request: StorageItemIdsByBarcodesRequest
-    ): ResponseEntity<ApiResponse<List<StorageItemIdResponse>>>
+    ): ApiResponse<List<StorageItemIdResponse>>
 }
 
 data class StorageItemIdsByBarcodesRequest(

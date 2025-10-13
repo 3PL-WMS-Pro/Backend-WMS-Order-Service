@@ -210,7 +210,7 @@ class OrderFulfillmentService(
                         throw ValidationException("Failed to fetch storage item ID: ${e.message}")
                     }
 
-                    val storageItemId = storageItemIdResponse.body?.data?.firstOrNull()?.storageItemId
+                    val storageItemId = storageItemIdResponse.data?.firstOrNull()?.storageItemId
                         ?: throw ValidationException("Storage item ID not found for barcode: $itemBarcode")
 
                     pickingItems.add(
