@@ -2,6 +2,7 @@ package com.wmspro.order.service
 
 import com.wmspro.order.client.InventoryServiceClient
 import com.wmspro.order.client.ProductServiceClient
+import com.wmspro.order.client.StorageItemIdsByBarcodesRequest
 import com.wmspro.order.client.TaskServiceClient
 import com.wmspro.order.dto.*
 import com.wmspro.order.enums.*
@@ -11,6 +12,7 @@ import com.wmspro.order.exception.OrderFulfillmentRequestNotFoundException
 import com.wmspro.order.exception.TaskCreationFailedException
 import com.wmspro.order.model.*
 import com.wmspro.order.repository.OrderFulfillmentRequestRepository
+import jakarta.validation.ValidationException
 import org.slf4j.LoggerFactory
 import org.springframework.data.domain.Page
 import org.springframework.data.domain.PageRequest
@@ -198,8 +200,22 @@ class OrderFulfillmentService(
                         )
                     }
 
+                    // Fetch the Storage Item ID to save in the database.
+                    val storageItemIdResponse = try {
+                        inventoryServiceClient.getStorageItemIdsByBarcodes(
+                            StorageItemIdsByBarcodesRequest(listOf(itemBarcode))
+                        )
+                    } catch (e: Exception) {
+                        logger.error("Error fetching storage item ID for barcode: $itemBarcode", e)
+                        throw ValidationException("Failed to fetch storage item ID: ${e.message}")
+                    }
+
+                    val storageItemId = storageItemIdResponse.body?.data?.firstOrNull()?.storageItemId
+                        ?: throw ValidationException("Storage item ID not found for barcode: $itemBarcode")
+
                     pickingItems.add(
                         PickingItemDto(
+                            storageItemId = storageItemId,
                             itemBarcode = itemBarcode,
                             itemType = lineItem.itemType.name,
                             pickMethod = "RANDOM",
