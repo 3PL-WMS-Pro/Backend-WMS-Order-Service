@@ -24,7 +24,7 @@ interface InventoryServiceClient {
      * Get Storage Item IDs by Barcodes
      * Retrieves storage item IDs for given barcodes
      */
-    @PostMapping("/api/v1/storage-items/ids-by-barcodes")
+    @PostMapping("/ids-by-barcodes")
     fun getStorageItemIdsByBarcodes(
         @RequestBody request: StorageItemIdsByBarcodesRequest
     ): ResponseEntity<ApiResponse<List<StorageItemIdResponse>>>
