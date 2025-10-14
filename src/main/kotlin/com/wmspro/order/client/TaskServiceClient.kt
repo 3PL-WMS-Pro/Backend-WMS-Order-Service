@@ -22,7 +22,7 @@ interface TaskServiceClient {
         @RequestHeader("Authorization") authToken: String
     ): ApiResponse<TaskResponse>
 
-    @GetMapping("/api/v1/tasks/{taskCode}/web-details")
+    @GetMapping("/{taskCode}/web-details")
     fun getTaskWebDetails(
         @PathVariable taskCode: String,
         @RequestParam(required = false) accountId: Long?
