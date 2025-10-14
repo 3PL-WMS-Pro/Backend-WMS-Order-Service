@@ -10,7 +10,7 @@ import org.springframework.stereotype.Repository
 import java.util.*
 
 @Repository
-interface OrderFulfillmentRequestRepository : MongoRepository<OrderFulfillmentRequest, String> {
+interface OrderFulfillmentRequestRepository : MongoRepository<OrderFulfillmentRequest, String>, CustomOrderFulfillmentRequestRepository {
 
     fun findByFulfillmentId(fulfillmentId: String): Optional<OrderFulfillmentRequest>
 

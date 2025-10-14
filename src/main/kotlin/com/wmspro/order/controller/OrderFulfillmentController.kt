@@ -2,12 +2,9 @@ package com.wmspro.order.controller
 
 import com.wmspro.common.dto.ApiResponse
 import com.wmspro.common.jwt.JwtTokenExtractor
-import com.wmspro.order.dto.CreateOfrRequest
-import com.wmspro.order.dto.OfrResponse
-import com.wmspro.order.dto.PageResponse
-import com.wmspro.order.dto.ChangeOfrStatusToPickupDoneRequest
-import com.wmspro.order.dto.ChangeOfrStatusToPickupDoneResponse
+import com.wmspro.order.dto.*
 import com.wmspro.order.enums.FulfillmentStatus
+import com.wmspro.order.enums.OfrStage
 import com.wmspro.order.service.OrderFulfillmentService
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.validation.Valid
@@ -162,6 +159,94 @@ class OrderFulfillmentController(
             ResponseEntity
                 .status(status)
                 .body(ApiResponse.error(e.message ?: "Failed to update OFR status"))
+        }
+    }
+
+    /**
+     * Get OFR Stage Summary
+     * GET /api/v1/orders/fulfillment-requests/stage-summary
+     *
+     * Returns count of OFRs in each stage for web dashboard
+     */
+    @GetMapping("/stage-summary")
+    fun getOfrStageSummary(
+        @RequestParam(required = false) accountId: Long?
+    ): ResponseEntity<ApiResponse<OfrStageSummaryResponse>> {
+        logger.info("GET /api/v1/orders/fulfillment-requests/stage-summary" +
+                if (accountId != null) " for account: $accountId" else "")
+
+        return try {
+            val summary = orderFulfillmentService.getOfrStageSummary(accountId)
+            ResponseEntity.ok(ApiResponse.success(summary, "OFR stage summary retrieved successfully"))
+        } catch (e: Exception) {
+            logger.error("Error retrieving OFR stage summary", e)
+            ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(e.message ?: "Failed to retrieve stage summary"))
+        }
+    }
+
+    /**
+     * Get OFRs by Stage for Web List Views
+     * GET /api/v1/orders/fulfillment-requests/by-stage
+     *
+     * Returns paginated list of OFRs filtered by stage with optional search and date filters
+     */
+    @GetMapping("/by-stage")
+    fun getOfrsByStage(
+        @RequestParam stage: OfrStage,
+        @RequestParam(defaultValue = "1") page: Int,
+        @RequestParam(defaultValue = "20") size: Int,
+        @RequestParam(required = false) search: String?,
+        @RequestParam(required = false) dateFrom: String?,
+        @RequestParam(required = false) dateTo: String?,
+        @RequestParam(required = false) accountId: Long?,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<PageResponse<OfrListItemResponse>>> {
+        logger.info("GET /api/v1/orders/fulfillment-requests/by-stage?stage={}&page={}&size={}",
+            stage, page, size)
+
+        return try {
+            val authToken = httpRequest.getHeader("Authorization") ?: ""
+
+            // Parse date parameters if provided
+            val dateFromParsed = dateFrom?.let {
+                try {
+                    java.time.LocalDateTime.parse(it, java.time.format.DateTimeFormatter.ISO_DATE_TIME)
+                } catch (e: Exception) {
+                    logger.warn("Invalid dateFrom format: $it")
+                    null
+                }
+            }
+
+            val dateToParsed = dateTo?.let {
+                try {
+                    java.time.LocalDateTime.parse(it, java.time.format.DateTimeFormatter.ISO_DATE_TIME)
+                } catch (e: Exception) {
+                    logger.warn("Invalid dateTo format: $it")
+                    null
+                }
+            }
+
+            // Convert from 1-based (user-facing) to 0-based (Spring Data) indexing
+            val result = orderFulfillmentService.getOfrsByStage(
+                stage = stage,
+                page = page - 1,  // Convert to 0-based indexing
+                size = size,
+                searchTerm = search,
+                dateFrom = dateFromParsed,
+                dateTo = dateToParsed,
+                accountId = accountId,
+                authToken = authToken
+            )
+
+            ResponseEntity.ok(ApiResponse.success(result, "OFRs retrieved successfully"))
+
+        } catch (e: Exception) {
+            logger.error("Error retrieving OFRs by stage: ${e.message}", e)
+            ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(e.message ?: "Failed to retrieve OFRs"))
         }
     }
 }

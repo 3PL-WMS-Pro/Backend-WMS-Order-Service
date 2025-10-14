@@ -30,7 +30,8 @@ class OrderFulfillmentService(
     private val productServiceClient: ProductServiceClient,
     private val inventoryServiceClient: InventoryServiceClient,
     private val taskServiceClient: TaskServiceClient,
-    private val jwtTokenExtractor: com.wmspro.common.jwt.JwtTokenExtractor
+    private val jwtTokenExtractor: com.wmspro.common.jwt.JwtTokenExtractor,
+    private val accountService: com.wmspro.common.service.AccountService
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -297,7 +298,8 @@ class OrderFulfillmentService(
                 status = FulfillmentStatus.RECEIVED,
                 timestamp = LocalDateTime.now(),
                 user = createdBy,
-                automated = true
+                automated = true,
+                currentStatus = false  // This is an old status
             )
         )
         ofr.statusHistory.add(
@@ -306,7 +308,8 @@ class OrderFulfillmentService(
                 timestamp = LocalDateTime.now(),
                 user = createdBy,
                 automated = true,
-                notes = "Task ${taskData.taskCode} created successfully"
+                notes = "Task ${taskData.taskCode} created successfully",
+                currentStatus = true  // This is the current status
             )
         )
 
@@ -518,7 +521,14 @@ class OrderFulfillmentService(
         // Step 3: Update OFR status to PICKED
         ofr.fulfillmentStatus = FulfillmentStatus.PICKED
 
-        // Step 4: Add status_history entry
+        // Step 4: Mark all existing status history entries as not current by recreating them
+        val updatedHistory = ofr.statusHistory.map { history ->
+            history.copy(currentStatus = false)
+        }.toMutableList()
+        ofr.statusHistory.clear()
+        ofr.statusHistory.addAll(updatedHistory)
+
+        // Step 5: Add status_history entry with currentStatus = true
         val username = jwtTokenExtractor.extractUsername(authToken) ?: "SYSTEM"
         ofr.statusHistory.add(
             StatusHistory(
@@ -526,7 +536,8 @@ class OrderFulfillmentService(
                 timestamp = LocalDateTime.now(),
                 user = username,
                 automated = true,
-                notes = null
+                notes = null,
+                currentStatus = true  // This is the current status
             )
         )
 
@@ -604,5 +615,120 @@ class OrderFulfillmentService(
             updatedAt = LocalDateTime.now(),
             nextTask = nextTask
         )
+    }
+
+    /**
+     * Get OFRs by Stage for Web List Views
+     * All filtering is done at database level using MongoTemplate
+     */
+    fun getOfrsByStage(
+        stage: OfrStage,
+        page: Int,
+        size: Int,
+        searchTerm: String?,
+        dateFrom: LocalDateTime?,
+        dateTo: LocalDateTime?,
+        accountId: Long?,
+        authToken: String
+    ): PageResponse<OfrListItemResponse> {
+        logger.info("Fetching OFRs for stage: {} with page: {}, size: {}", stage, page, size)
+
+        val pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "updatedAt"))
+
+        // Fetch OFRs with all filters applied at database level
+        val ofrPage = ofrRepository.findOfrsByStageWithFilters(
+            stage = stage,
+            accountId = accountId,
+            searchTerm = searchTerm,
+            dateFrom = dateFrom,
+            dateTo = dateTo,
+            pageable = pageable
+        )
+
+        // Enrich with account names
+        val accountIds = ofrPage.content.map { it.accountId }.distinct()
+        val accountNames = if (accountIds.isNotEmpty()) {
+            accountService.fetchAccountNames(accountIds, authToken)
+        } else {
+            emptyMap()
+        }
+
+        // Convert to response DTOs
+        val responseItems = ofrPage.content.map { ofr ->
+            toOfrListItemResponse(ofr, accountNames[ofr.accountId.toString()])
+        }
+
+        return PageResponse(
+            data = responseItems,
+            page = page,
+            limit = size,
+            totalItems = ofrPage.totalElements,
+            totalPages = ofrPage.totalPages,
+            hasNext = ofrPage.hasNext(),
+            hasPrevious = ofrPage.hasPrevious()
+        )
+    }
+
+    /**
+     * Get OFR Stage Summary (counts for all stages)
+     * All counting is done at database level using MongoTemplate
+     */
+    fun getOfrStageSummary(accountId: Long?): OfrStageSummaryResponse {
+        logger.info("Fetching OFR stage summary" + if (accountId != null) " for account: $accountId" else "")
+
+        // Get counts for all stages using database-level queries
+        return OfrStageSummaryResponse(
+            pickingPending = ofrRepository.countOfrsByStage(OfrStage.PICKING_PENDING, accountId),
+            packMovePending = ofrRepository.countOfrsByStage(OfrStage.PACK_MOVE_PENDING, accountId),
+            pickPackMovePending = ofrRepository.countOfrsByStage(OfrStage.PICK_PACK_MOVE_PENDING, accountId),
+            readyToDispatch = ofrRepository.countOfrsByStage(OfrStage.READY_TO_DISPATCH, accountId),
+            loadingDoneGinPending = ofrRepository.countOfrsByStage(OfrStage.LOADING_DONE_GIN_PENDING, accountId),
+            ginSent = ofrRepository.countOfrsByStage(OfrStage.GIN_SENT, accountId)
+        )
+    }
+
+    /**
+     * Convert OFR to OfrListItemResponse
+     */
+    private fun toOfrListItemResponse(
+        ofr: OrderFulfillmentRequest,
+        accountName: String?
+    ): OfrListItemResponse {
+        return OfrListItemResponse(
+            fulfillmentId = ofr.fulfillmentId,
+            createdAt = ofr.createdAt,
+            updatedAt = ofr.updatedAt,
+            customerName = ofr.customerInfo.name,
+            accountName = accountName,
+            pickingId = ofr.pickingTaskId,
+            packMoveId = ofr.packMoveTaskId,
+            pickPackMoveId = ofr.pickPackMoveTaskId,
+            loadingId = ofr.loadingTaskId,
+            awb = ofr.shippingDetails.awbNumber,
+            gin = ofr.ginNumber,
+            items = calculateItemsCount(ofr),
+            locations = calculateLocationsCount(ofr),
+            packages = ofr.packages.size
+        )
+    }
+
+    /**
+     * Calculate total items count (sum of quantityOrdered)
+     */
+    private fun calculateItemsCount(ofr: OrderFulfillmentRequest): Int {
+        return ofr.lineItems.sumOf { it.quantityOrdered }
+    }
+
+    /**
+     * Calculate distinct locations count
+     */
+    private fun calculateLocationsCount(ofr: OrderFulfillmentRequest): Int {
+        val locations = mutableSetOf<String>()
+        ofr.lineItems.forEach { lineItem ->
+            lineItem.allocatedItems.forEach { allocatedItem ->
+                locations.add(allocatedItem.location)
+            }
+        }
+        return locations.size
     }
 }

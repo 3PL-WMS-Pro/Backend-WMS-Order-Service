@@ -191,7 +191,8 @@ data class StatusHistory(
     val timestamp: LocalDateTime = LocalDateTime.now(),
     val user: String? = null,
     val automated: Boolean = false,
-    val notes: String? = null
+    val notes: String? = null,
+    val currentStatus: Boolean = false
 )
 
 data class OrderValue(

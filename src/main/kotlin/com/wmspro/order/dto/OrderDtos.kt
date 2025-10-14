@@ -216,3 +216,47 @@ data class NextTaskDto(
     val taskCode: String,
     val taskType: String
 )
+
+/**
+ * Web List View DTOs for Order Fulfillment Requests
+ */
+
+/**
+ * OFR List Item Response for Web List Views
+ * Used in stage-based list views (Picking Pending, Pack & Move Pending, etc.)
+ */
+data class OfrListItemResponse(
+    val fulfillmentId: String,
+    val createdAt: LocalDateTime,
+    val updatedAt: LocalDateTime,
+
+    // Customer details
+    val customerName: String,
+    val accountName: String?,
+
+    // Stage-specific fields
+    val pickingId: String? = null,          // For Picking Pending stage
+    val packMoveId: String? = null,         // For Pack & Move Pending stage
+    val pickPackMoveId: String? = null,     // For Pick Pack Move Pending stage
+    val loadingId: String? = null,          // For Loading Done & GIN Sent stages
+    val awb: String? = null,                // For Ready To Dispatch, Loading Done stages
+    val gin: String? = null,                // For Ready To Dispatch, GIN Sent stages
+
+    // Common metrics
+    val items: Int,                         // Sum of quantityOrdered from all lineItems
+    val locations: Int? = null,             // Count of distinct locations (for picking stages)
+    val packages: Int? = null               // Count of packages (for Ready To Dispatch stage)
+)
+
+/**
+ * Stage Summary Response
+ * Returns count of OFRs in each stage
+ */
+data class OfrStageSummaryResponse(
+    val pickingPending: Long,
+    val packMovePending: Long,
+    val pickPackMovePending: Long,
+    val readyToDispatch: Long,
+    val loadingDoneGinPending: Long,
+    val ginSent: Long
+)
