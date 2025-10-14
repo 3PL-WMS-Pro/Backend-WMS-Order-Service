@@ -206,6 +206,19 @@ data class OrderValue(
 data class GinNotification(
     var sentToCustomer: Boolean = false,
     val sentAt: LocalDateTime? = null,
-    val customerEmail: String? = null,
-    val signedGinDocument: String? = null  // URL/path to signed GIN
+
+    // GIN Email Form Details
+    val ginDate: LocalDateTime? = null,        // Business date for GIN document
+    val toEmail: String? = null,               // Primary recipient email
+    val ccEmails: List<String> = listOf(),     // CC recipient emails
+    val subject: String? = null,               // Email subject line
+    val emailContent: String? = null,          // Email body content
+
+    // Attachments
+    val attachments: List<GinAttachment> = listOf()  // GIN attachments (PDF, signed docs, etc.)
+)
+
+data class GinAttachment(
+    val fileName: String,
+    val fileUrl: String  // S3 URL, local path, or Base64 encoded string
 )
