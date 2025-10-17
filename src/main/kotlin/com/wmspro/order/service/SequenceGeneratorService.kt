@@ -35,6 +35,7 @@ class SequenceGeneratorService(
         const val OFR_SEQUENCE_NAME = "ofr_sequence"
         const val LINE_ITEM_SEQUENCE_NAME = "line_item_sequence"
         const val PACKAGE_SEQUENCE_NAME = "package_sequence"
+        const val GIN_SEQUENCE_NAME = "gin_sequence"
     }
 
     /**
@@ -65,6 +66,17 @@ class SequenceGeneratorService(
     fun generatePackageId(): String {
         val sequenceValue = generateSequence(PACKAGE_SEQUENCE_NAME)
         return String.format("PKG-%03d", sequenceValue)
+    }
+
+    /**
+     * Generate next GIN (Goods Issue Note) ID
+     * Format: GIN-{year}-{sequential}
+     * Example: GIN-2025-000001, GIN-2025-000002
+     */
+    fun generateGinNumber(): String {
+        val currentYear = java.time.Year.now().value
+        val sequenceValue = generateSequence(GIN_SEQUENCE_NAME)
+        return String.format("GIN-%d-%06d", currentYear, sequenceValue)
     }
 
     /**

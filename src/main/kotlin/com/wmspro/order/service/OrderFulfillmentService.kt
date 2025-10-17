@@ -806,4 +806,128 @@ class OrderFulfillmentService(
         // Step 5: Return AWB configuration
         return awbConfiguration
     }
+
+    /**
+     * API 160: Change OFR Status to READY_TO_SHIP
+     *
+     * Generates GIN (Goods Issue Note) if not exists, updates OFR status to READY_TO_SHIP,
+     * and calls Inventory-Service API 127 to update all item locations to dispatch area.
+     *
+     * This is the final step in pack-move completion orchestration:
+     * 1. Generate or retrieve GIN number
+     * 2. Update OFR status to READY_TO_SHIP
+     * 3. For each package → for each assigned item → update inventory location
+     * 4. Save updated OFR
+     *
+     * Note: shipmentStatus field update is skipped as per API clarification.
+     * This was mentioned in the API Specsheet but the field doesn't exist in the OFR model.
+     */
+    @Transactional
+    fun changeOfrStatusToReadyToShip(fulfillmentRequestId: String, authToken: String): String {
+        logger.info("API 160: Changing OFR status to READY_TO_SHIP for: $fulfillmentRequestId")
+
+        // Step 1: Fetch OFR
+        var ofr = ofrRepository.findByFulfillmentId(fulfillmentRequestId)
+            .orElseThrow { OrderFulfillmentRequestNotFoundException("Order Fulfillment Request not found: $fulfillmentRequestId") }
+
+        // Step 2: Generate GIN if not exists
+        val ginNumber = if (ofr.ginNumber.isNullOrBlank()) {
+            try {
+                val generatedGin = sequenceGeneratorService.generateGinNumber()
+                logger.info("Generated new GIN: $generatedGin for OFR: $fulfillmentRequestId")
+                generatedGin
+            } catch (e: Exception) {
+                logger.error("Failed to generate GIN: ${e.message}", e)
+                throw ValidationException("Failed to generate GIN number: ${e.message}")
+            }
+        } else {
+            logger.info("Using existing GIN: ${ofr.ginNumber} for OFR: $fulfillmentRequestId")
+            ofr.ginNumber
+        }
+
+        // Step 3: Update OFR status and GIN
+        val updatedStatusHistory = ofr.statusHistory.toMutableList().apply {
+            // Set all previous entries to current_status = false
+            forEach { it.copy(currentStatus = false) }
+            // Add new status entry
+            add(
+                StatusHistory(
+                    status = FulfillmentStatus.READY_TO_SHIP,
+                    timestamp = LocalDateTime.now(),
+                    user = jwtTokenExtractor.extractUsername(authToken),
+                    automated = false,
+                    notes = "Pack move completed, ready for shipping",
+                    currentStatus = true
+                )
+            )
+        }
+
+        ofr = ofr.copy(
+            fulfillmentStatus = FulfillmentStatus.READY_TO_SHIP,
+            ginNumber = ginNumber,
+            statusHistory = updatedStatusHistory,
+            updatedAt = LocalDateTime.now()
+        )
+
+        // Step 4: Call Inventory-Service API 127 for each package's items
+        logger.info("Updating inventory locations for ${ofr.packages.size} packages")
+        var inventoryUpdateSuccessCount = 0
+        var inventoryUpdateFailureCount = 0
+
+        for (pkg in ofr.packages) {
+            val dispatchArea = pkg.dispatchArea ?: pkg.dispatchAreaBarcode
+            if (dispatchArea.isNullOrBlank()) {
+                logger.warn("Package ${pkg.packageId} has no dispatch area defined, skipping inventory updates")
+                continue
+            }
+
+            logger.info("Updating locations for ${pkg.assignedItems.size} items in package ${pkg.packageId} to $dispatchArea")
+
+            for (assignedItem in pkg.assignedItems) {
+                // For each item barcode, call Inventory API 127
+                for (itemBarcode in assignedItem.itemBarcodes) {
+                    try {
+                        val response = inventoryServiceClient.changeStorageItemLocation(
+                            itemBarcode = itemBarcode,
+                            request = com.wmspro.order.client.ChangeLocationRequest(
+                                newLocation = dispatchArea,
+                                taskCode = ofr.packMoveTaskId ?: "PACK_MOVE_COMPLETED",
+                                action = "MOVED",
+                                notes = "Moved to dispatch area after pack move completion",
+                                reason = "Pack move completed, ready for shipping"
+                            ),
+                            authToken = authToken
+                        )
+
+                        if (response.success) {
+                            inventoryUpdateSuccessCount++
+                            logger.info("Successfully updated location for item: $itemBarcode to $dispatchArea")
+                        } else {
+                            inventoryUpdateFailureCount++
+                            logger.error("Inventory API returned error for $itemBarcode: ${response.message}")
+                        }
+                    } catch (e: Exception) {
+                        // Non-blocking: Log error but continue
+                        inventoryUpdateFailureCount++
+                        logger.error("Failed to update inventory location for $itemBarcode: ${e.message}", e)
+                    }
+                }
+            }
+        }
+
+        logger.info("Inventory updates completed: $inventoryUpdateSuccessCount succeeded, $inventoryUpdateFailureCount failed")
+
+        // Step 5: Save updated OFR
+        ofrRepository.save(ofr)
+        logger.info("OFR $fulfillmentRequestId status changed to READY_TO_SHIP with GIN: $ginNumber")
+
+        // Return success message
+        val message = if (inventoryUpdateFailureCount > 0) {
+            "OFR status changed to READY_TO_SHIP with GIN $ginNumber. Warning: $inventoryUpdateFailureCount inventory location updates failed."
+        } else {
+            "OFR status changed to READY_TO_SHIP with GIN $ginNumber. All inventory locations updated successfully."
+        }
+
+        return message
+    }
 }

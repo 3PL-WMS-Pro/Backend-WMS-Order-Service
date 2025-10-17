@@ -200,6 +200,42 @@ class OrderFulfillmentController(
     }
 
     /**
+     * API 160: Change OFR Status to READY_TO_SHIP
+     * PUT /api/v1/orders/fulfillment/{fulfillmentRequestId}/ready-to-ship
+     *
+     * Generates GIN, updates OFR to READY_TO_SHIP status, and updates inventory locations
+     */
+    @PutMapping("/{fulfillmentRequestId}/ready-to-ship")
+    fun changeOfrStatusToReadyToShip(
+        @PathVariable fulfillmentRequestId: String,
+        @RequestHeader("Authorization") authToken: String
+    ): ResponseEntity<ApiResponse<String>> {
+        logger.info("PUT /api/v1/orders/fulfillment/$fulfillmentRequestId/ready-to-ship - Changing OFR status")
+
+        return try {
+            val message = orderFulfillmentService.changeOfrStatusToReadyToShip(fulfillmentRequestId, authToken)
+
+            ResponseEntity.ok(
+                ApiResponse.success(
+                    message,
+                    "OFR status changed to READY_TO_SHIP successfully"
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error changing OFR status to READY_TO_SHIP: ${e.message}", e)
+            val status = if (e.message?.contains("not found", ignoreCase = true) == true) {
+                HttpStatus.NOT_FOUND
+            } else {
+                HttpStatus.INTERNAL_SERVER_ERROR
+            }
+
+            ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(e.message ?: "Failed to change OFR status to READY_TO_SHIP"))
+        }
+    }
+
+    /**
      * Get OFR Stage Summary
      * GET /api/v1/orders/fulfillment-requests/stage-summary
      *
