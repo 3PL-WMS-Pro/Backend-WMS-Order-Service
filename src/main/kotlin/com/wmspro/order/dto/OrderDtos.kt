@@ -260,3 +260,19 @@ data class OfrStageSummaryResponse(
     val loadingDoneGinPending: Long,
     val ginSent: Long
 )
+
+/**
+ * API 154: Create AWB For All Packages - Response
+ * AWB Configuration Object (Hardcoded until Shipping Service integration)
+ */
+data class AwbConfigurationResponse(
+    val shipmentId: String,
+    val awbNumber: String,
+    val carrier: String,
+    val createdViaApi: Boolean,
+    val requestedServiceType: String,
+    val selectedServiceCode: String,
+    val trackingUrl: String,
+    val shippingLabelPdf: String,
+    val awbPdf: String
+)

@@ -731,4 +731,79 @@ class OrderFulfillmentService(
         }
         return locations.size
     }
+
+    /**
+     * API 154: Create AWB For All Packages
+     *
+     * TODO: This AWB generation is completely hardcoded. Ideally AWB needs to be generated
+     *  dynamically and properly using the Shipping-Micro-Service. This is a placeholder
+     *  implementation until Shipping-Service integration is complete.
+     *
+     * TODO: Once Shipping-Service is integrated, this method should:
+     *  1. Call Shipping-Service with package details
+     *  2. Receive real AWB number, tracking URL, and PDF documents
+     *  3. Update OFR with actual shipping details
+     */
+    @Transactional
+    fun createAwbForAllPackages(fulfillmentRequestId: String): AwbConfigurationResponse {
+        logger.info("API 154: Creating AWB for fulfillment request: $fulfillmentRequestId")
+
+        // Step 1: Fetch OFR
+        val ofr = ofrRepository.findByFulfillmentId(fulfillmentRequestId)
+            .orElseThrow { OrderFulfillmentRequestNotFoundException("Order Fulfillment Request not found: $fulfillmentRequestId") }
+
+        logger.warn("Generating hardcoded AWB - Shipping Service integration pending")
+
+        // Step 2: Generate hardcoded AWB data (placeholder until Shipping-Service integration)
+        val timestamp = System.currentTimeMillis()
+        val randomAwbNumber = (100000000..999999999).random()
+
+        val shipmentId = "SHIP-2025-${String.format("%06d", timestamp % 1000000)}"
+        val awbNumber = "AWB-$randomAwbNumber"
+        val carrier = "FIRST_FLIGHT_COURIER"
+        val createdViaApi = true
+        val requestedServiceType = ServiceType.EXPRESS.name
+        val selectedServiceCode = "EXP-001"
+        val trackingUrl = "https://track.example.com/$awbNumber"
+
+        // Minimal valid base64 PDF placeholder
+        val hardcodedPdfBase64 = "JVBERi0xLjQKJeLjz9MKMyAwIG9iago8PC9UeXBlL1BhZ2UvUGFyZW50IDIgMCBSL01lZGlhQm94WzAgMCA2MTIgNzkyXS9Db250ZW50cyA0IDAgUj4+CmVuZG9iago0IDAgb2JqCjw8L0xlbmd0aCAzOD4+CnN0cmVhbQpCVAovRjEgMTIgVGYKMTAwIDcwMCBUZAooSGFyZGNvZGVkIFBsYWNlaG9sZGVyIFBERikgVGoKRVQKZW5kc3RyZWFtCmVuZG9iag=="
+
+        val awbConfiguration = AwbConfigurationResponse(
+            shipmentId = shipmentId,
+            awbNumber = awbNumber,
+            carrier = carrier,
+            createdViaApi = createdViaApi,
+            requestedServiceType = requestedServiceType,
+            selectedServiceCode = selectedServiceCode,
+            trackingUrl = trackingUrl,
+            shippingLabelPdf = hardcodedPdfBase64,
+            awbPdf = hardcodedPdfBase64
+        )
+
+        // Step 3: Update OFR shipping_details with AWB information
+        val updatedShippingDetails = ofr.shippingDetails.copy(
+            carrier = carrier,
+            requestedServiceType = ServiceType.valueOf(requestedServiceType),
+            selectedServiceCode = selectedServiceCode,
+            shipmentId = shipmentId,
+            awbNumber = awbNumber,
+            awbPdf = hardcodedPdfBase64,
+            trackingUrl = trackingUrl,
+            shippingLabelPdf = hardcodedPdfBase64
+        )
+
+        val updatedOfr = ofr.copy(
+            shippingDetails = updatedShippingDetails,
+            updatedAt = LocalDateTime.now()
+        )
+
+        // Step 4: Save updated OFR
+        ofrRepository.save(updatedOfr)
+
+        logger.info("AWB generated successfully (hardcoded): $awbNumber for OFR: $fulfillmentRequestId")
+
+        // Step 5: Return AWB configuration
+        return awbConfiguration
+    }
 }

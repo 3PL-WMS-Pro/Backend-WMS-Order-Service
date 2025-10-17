@@ -165,6 +165,41 @@ class OrderFulfillmentController(
     }
 
     /**
+     * API 154: Create AWB For All Packages
+     * PUT /api/v1/orders/fulfillment-requests/{fulfillmentRequestId}/awb
+     *
+     * Creates hardcoded AWB for all packages (pending Shipping-Service integration)
+     */
+    @PutMapping("/{fulfillmentRequestId}/awb")
+    fun createAwbForAllPackages(
+        @PathVariable fulfillmentRequestId: String
+    ): ResponseEntity<ApiResponse<AwbConfigurationResponse>> {
+        logger.info("PUT /api/v1/orders/fulfillment-requests/$fulfillmentRequestId/awb - Creating AWB")
+
+        return try {
+            val awbConfig = orderFulfillmentService.createAwbForAllPackages(fulfillmentRequestId)
+
+            ResponseEntity.ok(
+                ApiResponse.success(
+                    awbConfig,
+                    "AWB generated successfully (Hardcoded - pending Shipping Service integration)"
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error creating AWB: ${e.message}", e)
+            val status = if (e.message?.contains("not found", ignoreCase = true) == true) {
+                HttpStatus.NOT_FOUND
+            } else {
+                HttpStatus.INTERNAL_SERVER_ERROR
+            }
+
+            ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(e.message ?: "Failed to create AWB"))
+        }
+    }
+
+    /**
      * Get OFR Stage Summary
      * GET /api/v1/orders/fulfillment-requests/stage-summary
      *
