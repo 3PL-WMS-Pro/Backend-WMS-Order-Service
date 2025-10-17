@@ -18,6 +18,7 @@ import org.springframework.web.bind.annotation.*
 class OrderFulfillmentController(
     private val orderFulfillmentService: OrderFulfillmentService,
     private val orderFulfillmentDetailsService: com.wmspro.order.service.OrderFulfillmentDetailsService,
+    private val ofrPackageMgmtService: com.wmspro.order.service.OFRPackageMgmtService,
     private val jwtTokenExtractor: JwtTokenExtractor
 ) {
 
@@ -467,6 +468,157 @@ class OrderFulfillmentController(
             ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error(e.message ?: "Failed to retrieve GIN sent details"))
+        }
+    }
+
+    // ========== PACKAGE MANAGEMENT APIs (Phase 6.2) ==========
+
+    /**
+     * API 147: Get All Packages (For a particular OFR)
+     * Method: GET
+     * Endpoint: /api/v1/orders/fulfillment-requests/{fulfillmentId}/packages
+     */
+    @GetMapping("/{fulfillmentId}/packages")
+    fun getAllPackages(
+        @PathVariable fulfillmentId: String
+    ): ResponseEntity<ApiResponse<List<PackageSummaryDto>>> {
+        logger.info("API 147: GET /api/v1/orders/fulfillment-requests/{}/packages", fulfillmentId)
+
+        return try {
+            val packages = ofrPackageMgmtService.getAllPackages(fulfillmentId)
+
+            if (packages.isEmpty()) {
+                ResponseEntity.ok(
+                    ApiResponse(
+                        success = false,
+                        message = "No packages found for this order fulfillment request",
+                        data = emptyList()
+                    )
+                )
+            } else {
+                ResponseEntity.ok(
+                    ApiResponse.success(packages, "Packages retrieved successfully")
+                )
+            }
+
+        } catch (e: Exception) {
+            logger.error("Error retrieving packages for OFR: {}", fulfillmentId, e)
+            val status = if (e.message?.contains("not found", ignoreCase = true) == true) {
+                HttpStatus.NOT_FOUND
+            } else {
+                HttpStatus.INTERNAL_SERVER_ERROR
+            }
+
+            ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(e.message ?: "Failed to retrieve packages"))
+        }
+    }
+
+    /**
+     * API 149: Create New Package
+     * Method: POST
+     * Endpoint: /api/v1/orders/fulfillment-requests/{fulfillmentId}/packages
+     */
+    @PostMapping("/{fulfillmentId}/packages")
+    fun createPackage(
+        @PathVariable fulfillmentId: String,
+        @Valid @RequestBody request: CreatePackageRequest
+    ): ResponseEntity<ApiResponse<PackageResponse>> {
+        logger.info("API 149: POST /api/v1/orders/fulfillment-requests/{}/packages", fulfillmentId)
+
+        return try {
+            val packageResponse = ofrPackageMgmtService.createPackage(fulfillmentId, request)
+
+            ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success(packageResponse, "Package created successfully"))
+
+        } catch (e: Exception) {
+            logger.error("Error creating package for OFR: {}", fulfillmentId, e)
+            val status = when {
+                e.message?.contains("not found", ignoreCase = true) == true -> HttpStatus.NOT_FOUND
+                e.message?.contains("already exists", ignoreCase = true) == true -> HttpStatus.BAD_REQUEST
+                e.message?.contains("already assigned", ignoreCase = true) == true -> HttpStatus.BAD_REQUEST
+                e.message?.contains("exceeds", ignoreCase = true) == true -> HttpStatus.BAD_REQUEST
+                else -> HttpStatus.BAD_REQUEST
+            }
+
+            ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(e.message ?: "Failed to create package"))
+        }
+    }
+
+    /**
+     * API 151: Update Existing Package
+     * Method: PUT
+     * Endpoint: /api/v1/orders/fulfillment-requests/{fulfillmentId}/packages/{packageId}
+     */
+    @PutMapping("/{fulfillmentId}/packages/{packageId}")
+    fun updatePackage(
+        @PathVariable fulfillmentId: String,
+        @PathVariable packageId: String,
+        @Valid @RequestBody request: UpdatePackageRequest
+    ): ResponseEntity<ApiResponse<PackageResponse>> {
+        logger.info("API 151: PUT /api/v1/orders/fulfillment-requests/{}/packages/{}", fulfillmentId, packageId)
+
+        return try {
+            val packageResponse = ofrPackageMgmtService.updatePackage(fulfillmentId, packageId, request)
+
+            ResponseEntity.ok(
+                ApiResponse.success(packageResponse, "Package updated successfully")
+            )
+
+        } catch (e: Exception) {
+            logger.error("Error updating package {} for OFR: {}", packageId, fulfillmentId, e)
+            val status = when {
+                e.message?.contains("not found", ignoreCase = true) == true -> HttpStatus.NOT_FOUND
+                e.message?.contains("already at dispatch", ignoreCase = true) == true -> HttpStatus.BAD_REQUEST
+                e.message?.contains("already loaded", ignoreCase = true) == true -> HttpStatus.BAD_REQUEST
+                e.message?.contains("already exists", ignoreCase = true) == true -> HttpStatus.BAD_REQUEST
+                e.message?.contains("already assigned", ignoreCase = true) == true -> HttpStatus.BAD_REQUEST
+                e.message?.contains("exceeds", ignoreCase = true) == true -> HttpStatus.BAD_REQUEST
+                else -> HttpStatus.BAD_REQUEST
+            }
+
+            ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(e.message ?: "Failed to update package"))
+        }
+    }
+
+    /**
+     * API 157: Drop Packages at Dispatch
+     * Method: PUT
+     * Endpoint: /api/v1/orders/fulfillment-requests/{fulfillmentId}/drop-packages
+     */
+    @PutMapping("/{fulfillmentId}/drop-packages")
+    fun dropPackagesAtDispatch(
+        @PathVariable fulfillmentId: String,
+        @Valid @RequestBody request: DropPackagesRequest
+    ): ResponseEntity<ApiResponse<OfrResponse>> {
+        logger.info("API 157: PUT /api/v1/orders/fulfillment-requests/{}/drop-packages", fulfillmentId)
+
+        return try {
+            val updatedOfr = ofrPackageMgmtService.dropPackagesAtDispatch(fulfillmentId, request)
+            val response = OfrResponse.from(updatedOfr)
+
+            ResponseEntity.ok(
+                ApiResponse.success(response, "Packages dropped at dispatch successfully")
+            )
+
+        } catch (e: Exception) {
+            logger.error("Error dropping packages at dispatch for OFR: {}", fulfillmentId, e)
+            val status = if (e.message?.contains("not found", ignoreCase = true) == true) {
+                HttpStatus.NOT_FOUND
+            } else {
+                HttpStatus.INTERNAL_SERVER_ERROR
+            }
+
+            ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(e.message ?: "Failed to drop packages at dispatch"))
         }
     }
 }

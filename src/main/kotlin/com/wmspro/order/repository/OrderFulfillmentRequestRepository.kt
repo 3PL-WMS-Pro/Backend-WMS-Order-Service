@@ -33,4 +33,11 @@ interface OrderFulfillmentRequestRepository : MongoRepository<OrderFulfillmentRe
     fun findByExternalOrderId(externalOrderId: String): Optional<OrderFulfillmentRequest>
 
     fun existsByFulfillmentId(fulfillmentId: String): Boolean
+
+    /**
+     * Check if a package barcode exists in any OFR's packages array
+     * Used for API 149: Create Package validation
+     */
+    @Query("{ 'packages.packageBarcode': ?0 }")
+    fun existsByPackagesPackageBarcode(packageBarcode: String): Boolean
 }
