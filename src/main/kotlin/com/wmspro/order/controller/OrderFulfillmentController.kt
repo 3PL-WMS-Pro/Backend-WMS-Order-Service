@@ -587,6 +587,39 @@ class OrderFulfillmentController(
     }
 
     /**
+     * Get Package By ID
+     * Method: GET
+     * Endpoint: /api/v1/orders/fulfillment-requests/{fulfillmentId}/packages/{packageId}
+     */
+    @GetMapping("/{fulfillmentId}/packages/{packageId}")
+    fun getPackageById(
+        @PathVariable fulfillmentId: String,
+        @PathVariable packageId: String
+    ): ResponseEntity<ApiResponse<com.wmspro.order.model.Package>> {
+        logger.info("GET /api/v1/orders/fulfillment-requests/{}/packages/{}", fulfillmentId, packageId)
+
+        return try {
+            val packageData = ofrPackageMgmtService.getPackageById(fulfillmentId, packageId)
+
+            ResponseEntity.ok(
+                ApiResponse.success(packageData, "Package retrieved successfully")
+            )
+
+        } catch (e: Exception) {
+            logger.error("Error retrieving package {} for OFR: {}", packageId, fulfillmentId, e)
+            val status = if (e.message?.contains("not found", ignoreCase = true) == true) {
+                HttpStatus.NOT_FOUND
+            } else {
+                HttpStatus.INTERNAL_SERVER_ERROR
+            }
+
+            ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(e.message ?: "Failed to retrieve package"))
+        }
+    }
+
+    /**
      * API 149: Create New Package
      * Method: POST
      * Endpoint: /api/v1/orders/fulfillment-requests/{fulfillmentId}/packages

@@ -51,6 +51,20 @@ class OFRPackageMgmtService(
     }
 
     /**
+     * Get Package By ID
+     * Returns detailed package information for a specific package
+     */
+    fun getPackageById(fulfillmentId: String, packageId: String): com.wmspro.order.model.Package {
+        logger.info("Get package by ID: {} for OFR: {}", packageId, fulfillmentId)
+
+        val ofr = ofrRepository.findByFulfillmentId(fulfillmentId)
+            .orElseThrow { OrderFulfillmentRequestNotFoundException("Order Fulfillment Request not found: $fulfillmentId") }
+
+        return ofr.packages.find { it.packageId == packageId }
+            ?: throw InvalidOrderRequestException("Package not found: $packageId")
+    }
+
+    /**
      * API 149: Create New Package
      * Creates package in OFR with full validation including barcode uniqueness,
      * item assignment prevention, and quantity validation
