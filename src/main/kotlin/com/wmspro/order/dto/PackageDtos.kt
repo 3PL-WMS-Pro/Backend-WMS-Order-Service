@@ -14,7 +14,11 @@ data class PackageSummaryDto(
     val packageBarcode: String?,
     val dimensions: PackageDimensions?,
     val weight: PackageWeight?,
-    val noOfItems: Int
+    val noOfItems: Int,
+    val dispatchArea: String?,
+    val dispatchAreaBarcode: String?,
+    val droppedAtDispatch: Boolean,
+    val dispatchScannedAt: LocalDateTime?
 )
 
 /**

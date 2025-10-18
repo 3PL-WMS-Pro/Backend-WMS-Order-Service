@@ -45,7 +45,11 @@ class OFRPackageMgmtService(
                 packageBarcode = pkg.packageBarcode,
                 dimensions = pkg.dimensions,
                 weight = pkg.weight,
-                noOfItems = pkg.assignedItems.size
+                noOfItems = pkg.assignedItems.size,
+                dispatchArea = pkg.dispatchArea,
+                dispatchAreaBarcode = pkg.dispatchAreaBarcode,
+                droppedAtDispatch = pkg.droppedAtDispatch,
+                dispatchScannedAt = pkg.dispatchScannedAt
             )
         }
     }
