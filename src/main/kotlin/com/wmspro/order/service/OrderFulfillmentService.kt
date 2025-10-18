@@ -483,14 +483,8 @@ class OrderFulfillmentService(
             if (lineItem != null) {
                 // Update quantityPicked in line item
                 when (lineItem.itemType) {
-                    ItemType.BOX, ItemType.PALLET -> {
-                        if (pickedItem.picked) {
-                            lineItem.quantityPicked = 1
-                        }
-                    }
-                    ItemType.SKU_ITEM -> {
-                        lineItem.quantityPicked = pickedItem.quantityPicked ?: 0
-                    }
+                    ItemType.BOX, ItemType.PALLET -> if (pickedItem.picked) lineItem.quantityPicked = 1
+                    ItemType.SKU_ITEM -> lineItem.quantityPicked = lineItem.quantityPicked + 1
                 }
 
                 // Update or create allocated_items
