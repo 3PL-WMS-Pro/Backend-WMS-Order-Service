@@ -38,6 +38,6 @@ interface OrderFulfillmentRequestRepository : MongoRepository<OrderFulfillmentRe
      * Check if a package barcode exists in any OFR's packages array
      * Used for API 149: Create Package validation
      */
-    @Query("{ 'packages.packageBarcode': ?0 }")
+    @Query("{ 'packages.packageBarcode': ?0 }", exists = true)
     fun existsByPackagesPackageBarcode(packageBarcode: String): Boolean
 }
