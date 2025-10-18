@@ -65,6 +65,114 @@ class OFRPackageMgmtService(
     }
 
     /**
+     * Validate All Items Packaged
+     * Checks if all items from line items are assigned to packages
+     */
+    fun validateAllItemsPackaged(fulfillmentId: String): ValidateAllItemsPackagedResponse {
+        logger.info("Validating all items packaged for OFR: {}", fulfillmentId)
+
+        val ofr = ofrRepository.findByFulfillmentId(fulfillmentId)
+            .orElseThrow { OrderFulfillmentRequestNotFoundException("Order Fulfillment Request not found: $fulfillmentId") }
+
+        val unpackagedItems = mutableListOf<UnpackagedItemDto>()
+        var totalItemsRequired = 0
+        var totalItemsPackaged = 0
+
+        // Iterate through each line item
+        ofr.lineItems.forEach { lineItem ->
+            when (lineItem.itemType) {
+                ItemType.SKU_ITEM -> {
+                    // For SKU items, count how many times this SKU appears in packages
+                    val quantityRequired = lineItem.quantityPicked
+                    val quantityPackaged = ofr.packages
+                        .flatMap { it.assignedItems }
+                        .count { it.itemType == ItemType.SKU_ITEM && it.skuId == lineItem.skuId }
+
+                    totalItemsRequired += quantityRequired
+                    totalItemsPackaged += quantityPackaged
+
+                    if (quantityPackaged < quantityRequired) {
+                        unpackagedItems.add(
+                            UnpackagedItemDto(
+                                lineItemId = lineItem.lineItemId,
+                                itemType = lineItem.itemType,
+                                skuId = lineItem.skuId,
+                                itemBarcode = null,
+                                quantityRequired = quantityRequired,
+                                quantityPackaged = quantityPackaged,
+                                quantityMissing = quantityRequired - quantityPackaged
+                            )
+                        )
+                    }
+                }
+                ItemType.BOX, ItemType.PALLET -> {
+                    // For BOX/PALLET, check each allocated storage item
+                    lineItem.allocatedItems.forEach { allocatedItem ->
+                        val isPackaged = ofr.packages
+                            .flatMap { it.assignedItems }
+                            .any { it.storageItemId == allocatedItem.storageItemId }
+
+                        totalItemsRequired++
+                        if (isPackaged) {
+                            totalItemsPackaged++
+                        } else {
+                            // Check if this storage item is already in unpackagedItems
+                            val existingItem = unpackagedItems.find {
+                                it.lineItemId == lineItem.lineItemId &&
+                                it.itemType == lineItem.itemType
+                            }
+
+                            if (existingItem == null) {
+                                unpackagedItems.add(
+                                    UnpackagedItemDto(
+                                        lineItemId = lineItem.lineItemId,
+                                        itemType = lineItem.itemType,
+                                        skuId = null,
+                                        itemBarcode = lineItem.itemBarcode,
+                                        quantityRequired = lineItem.allocatedItems.size,
+                                        quantityPackaged = lineItem.allocatedItems.count { alloc ->
+                                            ofr.packages.flatMap { it.assignedItems }
+                                                .any { it.storageItemId == alloc.storageItemId }
+                                        },
+                                        quantityMissing = 1
+                                    )
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Group BOX/PALLET items by lineItemId to avoid duplicates and calculate correct counts
+        val groupedUnpackaged = unpackagedItems.groupBy { it.lineItemId }
+            .map { (_, items) ->
+                if (items.first().itemType == ItemType.BOX || items.first().itemType == ItemType.PALLET) {
+                    items.first().copy(
+                        quantityMissing = items.sumOf { it.quantityMissing }
+                    )
+                } else {
+                    items.first()
+                }
+            }
+
+        val allItemsPackaged = unpackagedItems.isEmpty()
+
+        logger.info(
+            "Validation complete for OFR {}: allItemsPackaged={}, totalRequired={}, totalPackaged={}",
+            fulfillmentId, allItemsPackaged, totalItemsRequired, totalItemsPackaged
+        )
+
+        return ValidateAllItemsPackagedResponse(
+            allItemsPackaged = allItemsPackaged,
+            totalItemsRequired = totalItemsRequired,
+            totalItemsPackaged = totalItemsPackaged,
+            unpackagedItems = groupedUnpackaged,
+            awbCondition = ofr.shippingDetails.awbCondition.name
+        )
+    }
+
+    /**
      * API 149: Create New Package
      * Creates package in OFR with full validation including barcode uniqueness,
      * item assignment prevention, and quantity validation

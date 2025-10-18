@@ -69,3 +69,24 @@ data class DropPackagesRequest(
     val dispatchZoneBarcode: String,
     val droppedPackageBarcodes: List<String>
 )
+
+/**
+ * Validate All Items Packaged Response
+ */
+data class ValidateAllItemsPackagedResponse(
+    val allItemsPackaged: Boolean,
+    val totalItemsRequired: Int,
+    val totalItemsPackaged: Int,
+    val unpackagedItems: List<UnpackagedItemDto>,
+    val awbCondition: String
+)
+
+data class UnpackagedItemDto(
+    val lineItemId: String,
+    val itemType: ItemType,
+    val skuId: Long?,
+    val itemBarcode: String?,
+    val quantityRequired: Int,
+    val quantityPackaged: Int,
+    val quantityMissing: Int
+)
