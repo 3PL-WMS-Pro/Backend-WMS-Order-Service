@@ -91,8 +91,7 @@ class OFRPackageMgmtService(
                     storageItemId = item.storageItemId,
                     skuId = item.skuId,
                     itemType = item.itemType,
-                    itemBarcodes = item.itemBarcodes,
-                    quantity = item.quantity
+                    itemBarcode = item.itemBarcode
                 )
             }.toMutableList(),
             dispatchArea = null,
@@ -196,8 +195,7 @@ class OFRPackageMgmtService(
                         storageItemId = item.storageItemId,
                         skuId = item.skuId,
                         itemType = item.itemType,
-                        itemBarcodes = item.itemBarcodes,
-                        quantity = item.quantity
+                        itemBarcode = item.itemBarcode
                     )
                 }.toMutableList()
             } else {
@@ -295,15 +293,17 @@ class OFRPackageMgmtService(
                     if (item.skuId == null) {
                         throw InvalidOrderRequestException("SKU ID is required for SKU_ITEM type")
                     }
-                    if (item.quantity == null || item.quantity <= 0) {
-                        throw InvalidOrderRequestException("Quantity is required and must be positive for SKU_ITEM type")
-                    }
                 }
                 ItemType.BOX, ItemType.PALLET -> {
-                    if (item.itemBarcodes.isEmpty()) {
-                        throw InvalidOrderRequestException("Item barcodes are required for ${item.itemType} type")
+                    if (item.itemBarcode.isBlank()) {
+                        throw InvalidOrderRequestException("Item barcode is required for ${item.itemType} type")
                     }
                 }
+            }
+
+            // Validate itemBarcode is not blank for all types
+            if (item.itemBarcode.isBlank()) {
+                throw InvalidOrderRequestException("Item barcode cannot be blank")
             }
         }
     }
@@ -337,39 +337,37 @@ class OFRPackageMgmtService(
 
     /**
      * Validate SKU item quantities don't exceed available quantity
+     * Note: Each AssignedItem now represents one physical item (no quantity field)
      */
     private fun validateSkuItemQuantities(
         ofr: OrderFulfillmentRequest,
         assignedItems: List<AssignedItemDto>,
         excludePackageId: String?
     ) {
-        // Group assigned items by SKU ID
+        // Group assigned items to add by SKU ID and count them
         val skuItemsToAdd = assignedItems.filter { it.itemType == ItemType.SKU_ITEM && it.skuId != null }
+        val skuCountsToAdd = skuItemsToAdd.groupBy { it.skuId }.mapValues { it.value.size }
 
-        skuItemsToAdd.forEach { item ->
-            val skuId = item.skuId!!
-            val quantityToAdd = item.quantity ?: 0
-
-            // Calculate already packaged quantity for this SKU (excluding current package if updating)
+        skuCountsToAdd.forEach { (skuId, countToAdd) ->
+            // Calculate already packaged count for this SKU (excluding current package if updating)
             val alreadyPackaged = ofr.packages
                 .filter { pkg -> excludePackageId == null || pkg.packageId != excludePackageId }
                 .flatMap { it.assignedItems }
-                .filter { it.itemType == ItemType.SKU_ITEM && it.skuId == skuId }
-                .sumOf { it.quantity ?: 0 }
+                .count { it.itemType == ItemType.SKU_ITEM && it.skuId == skuId }
 
             // Find line item for this SKU
             val lineItem = ofr.lineItems.find { it.itemType == ItemType.SKU_ITEM && it.skuId == skuId }
                 ?: throw InvalidOrderRequestException("Line item not found for SKU ID: $skuId")
 
             // Calculate total packaged (existing + new)
-            val totalPackaged = alreadyPackaged + quantityToAdd
+            val totalPackaged = alreadyPackaged + countToAdd
 
             // Validate against picked quantity
             if (totalPackaged > lineItem.quantityPicked) {
                 logger.error("Quantity exceeds available for SKU {}. Available: {}, Requested total: {}",
                     skuId, lineItem.quantityPicked, totalPackaged)
                 throw InvalidOrderRequestException(
-                    "Quantity exceeds available for SKU $skuId. Available: ${lineItem.quantityPicked}, Already packaged: $alreadyPackaged, Requesting: $quantityToAdd"
+                    "Quantity exceeds available for SKU $skuId. Available: ${lineItem.quantityPicked}, Already packaged: $alreadyPackaged, Requesting: $countToAdd"
                 )
             }
         }

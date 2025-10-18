@@ -35,8 +35,7 @@ data class AssignedItemDto(
     val storageItemId: Long,
     val skuId: Long?,
     val itemType: ItemType,
-    val itemBarcodes: List<String>,
-    val quantity: Int?
+    val itemBarcode: String
 )
 
 /**

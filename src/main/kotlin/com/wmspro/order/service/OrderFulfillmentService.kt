@@ -878,33 +878,31 @@ class OrderFulfillmentService(
             logger.info("Updating locations for ${pkg.assignedItems.size} items in package ${pkg.packageId} to $dispatchArea")
 
             for (assignedItem in pkg.assignedItems) {
-                // For each item barcode, call Inventory API 127
-                for (itemBarcode in assignedItem.itemBarcodes) {
-                    try {
-                        val response = inventoryServiceClient.changeStorageItemLocation(
-                            itemBarcode = itemBarcode,
-                            request = com.wmspro.order.client.ChangeLocationRequest(
-                                newLocation = dispatchArea,
-                                taskCode = ofr.packMoveTaskId ?: "PACK_MOVE_COMPLETED",
-                                action = "MOVED",
-                                notes = "Moved to dispatch area after pack move completion",
-                                reason = "Pack move completed, ready for shipping"
-                            ),
-                            authToken = authToken
-                        )
+                // Update inventory location for this item
+                try {
+                    val response = inventoryServiceClient.changeStorageItemLocation(
+                        itemBarcode = assignedItem.itemBarcode,
+                        request = com.wmspro.order.client.ChangeLocationRequest(
+                            newLocation = dispatchArea,
+                            taskCode = ofr.packMoveTaskId ?: "PACK_MOVE_COMPLETED",
+                            action = "MOVED",
+                            notes = "Moved to dispatch area after pack move completion",
+                            reason = "Pack move completed, ready for shipping"
+                        ),
+                        authToken = authToken
+                    )
 
-                        if (response.success) {
-                            inventoryUpdateSuccessCount++
-                            logger.info("Successfully updated location for item: $itemBarcode to $dispatchArea")
-                        } else {
-                            inventoryUpdateFailureCount++
-                            logger.error("Inventory API returned error for $itemBarcode: ${response.message}")
-                        }
-                    } catch (e: Exception) {
-                        // Non-blocking: Log error but continue
+                    if (response.success) {
+                        inventoryUpdateSuccessCount++
+                        logger.info("Successfully updated location for item: ${assignedItem.itemBarcode} to $dispatchArea")
+                    } else {
                         inventoryUpdateFailureCount++
-                        logger.error("Failed to update inventory location for $itemBarcode: ${e.message}", e)
+                        logger.error("Inventory API returned error for ${assignedItem.itemBarcode}: ${response.message}")
                     }
+                } catch (e: Exception) {
+                    // Non-blocking: Log error but continue
+                    inventoryUpdateFailureCount++
+                    logger.error("Failed to update inventory location for ${assignedItem.itemBarcode}: ${e.message}", e)
                 }
             }
         }

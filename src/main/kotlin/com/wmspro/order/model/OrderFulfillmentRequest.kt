@@ -162,8 +162,7 @@ data class AssignedItem(
     val storageItemId: Long,
     val skuId: Long? = null,
     val itemType: ItemType,
-    val itemBarcodes: List<String> = listOf(),
-    val quantity: Int? = null  // For SKU items
+    val itemBarcode: String
 )
 
 data class ShippingDetails(

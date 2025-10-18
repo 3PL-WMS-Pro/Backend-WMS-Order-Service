@@ -458,7 +458,7 @@ class OrderFulfillmentDetailsService(
                 val (itemId, itemName) = when (assignedItem.itemType.name) {
                     "SKU_ITEM" -> Pair(skuDetails?.skuCode ?: "N/A", skuDetails?.productTitle)
                     "BOX", "PALLET" -> Pair(
-                        assignedItem.itemBarcodes.firstOrNull() ?: "N/A",
+                        assignedItem.itemBarcode,
                         assignedItem.itemType.name
                     )
                     else -> Pair("N/A", null)
@@ -469,7 +469,7 @@ class OrderFulfillmentDetailsService(
                     itemId = itemId,
                     itemName = itemName,
                     itemImage = skuDetails?.primaryImageUrl,
-                    itemBarcode = assignedItem.itemBarcodes.firstOrNull(),
+                    itemBarcode = assignedItem.itemBarcode,
                     skuId = assignedItem.skuId
                 )
             }
@@ -550,7 +550,7 @@ class OrderFulfillmentDetailsService(
                 val (itemId, itemName) = when (assignedItem.itemType.name) {
                     "SKU_ITEM" -> Pair(skuDetails?.skuCode ?: "N/A", skuDetails?.productTitle)
                     "BOX", "PALLET" -> Pair(
-                        assignedItem.itemBarcodes.firstOrNull() ?: "N/A",
+                        assignedItem.itemBarcode,
                         assignedItem.itemType.name
                     )
                     else -> Pair("N/A", null)
@@ -561,7 +561,7 @@ class OrderFulfillmentDetailsService(
                     itemId = itemId,
                     itemName = itemName,
                     itemImage = skuDetails?.primaryImageUrl,
-                    itemBarcode = assignedItem.itemBarcodes.firstOrNull(),
+                    itemBarcode = assignedItem.itemBarcode,
                     skuId = assignedItem.skuId
                 )
             }
@@ -644,7 +644,7 @@ class OrderFulfillmentDetailsService(
                 val (itemId, itemName) = when (assignedItem.itemType.name) {
                     "SKU_ITEM" -> Pair(skuDetails?.skuCode ?: "N/A", skuDetails?.productTitle)
                     "BOX", "PALLET" -> Pair(
-                        assignedItem.itemBarcodes.firstOrNull() ?: "N/A",
+                        assignedItem.itemBarcode,
                         assignedItem.itemType.name
                     )
                     else -> Pair("N/A", null)
@@ -655,7 +655,7 @@ class OrderFulfillmentDetailsService(
                     itemId = itemId,
                     itemName = itemName,
                     itemImage = skuDetails?.primaryImageUrl,
-                    itemBarcode = assignedItem.itemBarcodes.firstOrNull(),
+                    itemBarcode = assignedItem.itemBarcode,
                     skuId = assignedItem.skuId
                 )
             }
