@@ -276,3 +276,18 @@ data class AwbConfigurationResponse(
     val shippingLabelPdf: String,
     val awbPdf: String
 )
+
+/**
+ * API 183: Change OFR Status to SHIPPED - Request
+ */
+data class ChangeOfrToShippedRequest(
+    val loadingTaskId: String,
+    val packagesToLoad: List<PackageToLoadDto>
+)
+
+data class PackageToLoadDto(
+    val packageId: String,
+    val packageBarcode: String,
+    val loaded: Boolean,
+    val scannedAt: LocalDateTime?
+)

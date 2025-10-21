@@ -922,4 +922,120 @@ class OrderFulfillmentService(
 
         return message
     }
+
+    /**
+     * API 183: Change OFR Status to SHIPPED
+     * Updates OFR with loading task details and triggers inventory location updates
+     */
+    @Transactional
+    fun changeOfrStatusToShipped(
+        fulfillmentRequestId: String,
+        loadingTaskId: String,
+        packagesToLoad: List<PackageToLoadDto>,
+        authToken: String
+    ): String {
+        val tenantId = com.wmspro.common.tenant.TenantContext.requireCurrentTenant()
+        logger.info("API 183: Changing OFR $fulfillmentRequestId to SHIPPED from loading task $loadingTaskId, tenant: $tenantId")
+
+        // Step 1: Query and validate OFR
+        val ofrRetrieved = ofrRepository.findByFulfillmentId(fulfillmentRequestId)
+            ?: throw OrderFulfillmentRequestNotFoundException("Order Fulfillment Request not found: $fulfillmentRequestId")
+
+        val ofr = ofrRetrieved.get()
+
+        // Step 2: Update packages with loading details
+        for (packageToLoad in packagesToLoad) {
+            val packageInOfr = ofr.packages.find {
+                it.packageId == packageToLoad.packageId || it.packageBarcode == packageToLoad.packageBarcode
+            }
+
+            if (packageInOfr != null) {
+                packageInOfr.loadedOnTruck = true
+                logger.info("Updated package ${packageToLoad.packageId} as loaded on truck")
+            } else {
+                logger.warn("Package ${packageToLoad.packageId} not found in OFR $fulfillmentRequestId")
+            }
+        }
+
+        // Step 3: Update OFR fields
+        ofr.loadingTaskId = loadingTaskId
+        ofr.fulfillmentStatus = FulfillmentStatus.SHIPPED
+
+        // Step 4: Add status history entry
+        val username = jwtTokenExtractor.extractUsername(authToken) ?: "SYSTEM"
+
+        // Set previous status to non-current (create new objects since currentStatus is immutable)
+        val updatedHistory = ofr.statusHistory.map { history ->
+            history.copy(currentStatus = false)
+        }.toMutableList()
+
+        // Add new SHIPPED status
+        updatedHistory.add(
+            StatusHistory(
+                status = FulfillmentStatus.SHIPPED,
+                timestamp = LocalDateTime.now(),
+                user = username,
+                automated = false,
+                notes = "Loaded onto truck for loading task $loadingTaskId",
+                currentStatus = true
+            )
+        )
+
+        // Clear and replace status history
+        ofr.statusHistory.clear()
+        ofr.statusHistory.addAll(updatedHistory)
+
+        // Step 5: Save updated OFR
+        ofrRepository.save(ofr)
+        logger.info("OFR $fulfillmentRequestId status updated to SHIPPED")
+
+        // Step 6: CRITICAL - Inventory Location Updates
+        logger.info("Starting inventory location updates for OFR $fulfillmentRequestId")
+
+        var inventoryUpdateSuccessCount = 0
+        var inventoryUpdateFailureCount = 0
+
+        for (pkg in ofr.packages) {
+            for (assignedItem in pkg.assignedItems) {
+                try {
+                    val changeLocationRequest = com.wmspro.order.client.ChangeLocationRequest(
+                        newLocation = "IN_TRANSIT", // or "CUSTOMER" based on business logic
+                        taskCode = loadingTaskId,
+                        action = "SHIPPED",
+                        notes = "Shipped via OFR $fulfillmentRequestId",
+                        reason = "Loading task completed"
+                    )
+
+                    val response = inventoryServiceClient.changeStorageItemLocation(
+                        assignedItem.itemBarcode,
+                        changeLocationRequest,
+                        authToken
+                    )
+
+                    if (response.success) {
+                        inventoryUpdateSuccessCount++
+                        logger.info("Updated inventory location for ${assignedItem.itemBarcode} to IN_TRANSIT")
+                    } else {
+                        inventoryUpdateFailureCount++
+                        logger.error("Inventory API returned error for ${assignedItem.itemBarcode}: ${response.message}")
+                    }
+                } catch (e: Exception) {
+                    // Non-blocking: Log error but continue
+                    inventoryUpdateFailureCount++
+                    logger.error("Failed to update inventory location for ${assignedItem.itemBarcode}: ${e.message}", e)
+                }
+            }
+        }
+
+        logger.info("Inventory updates completed: $inventoryUpdateSuccessCount succeeded, $inventoryUpdateFailureCount failed")
+
+        // Return success message
+        val message = if (inventoryUpdateFailureCount > 0) {
+            "OFR status changed to SHIPPED. Warning: $inventoryUpdateFailureCount inventory location updates failed."
+        } else {
+            "OFR status changed to SHIPPED. All inventory locations updated successfully."
+        }
+
+        return message
+    }
 }

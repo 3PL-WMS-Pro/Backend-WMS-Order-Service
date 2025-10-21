@@ -236,6 +236,48 @@ class OrderFulfillmentController(
     }
 
     /**
+     * API 183: Change OFR Status to SHIPPED
+     * PUT /api/v1/orders/fulfillment/{fulfillmentRequestId}/shipped
+     *
+     * Updates OFR with loading task details and triggers inventory location updates
+     */
+    @PutMapping("/{fulfillmentRequestId}/shipped")
+    fun changeOfrStatusToShipped(
+        @PathVariable fulfillmentRequestId: String,
+        @RequestBody request: ChangeOfrToShippedRequest,
+        @RequestHeader("Authorization") authToken: String
+    ): ResponseEntity<ApiResponse<String>> {
+        logger.info("PUT /api/v1/orders/fulfillment/$fulfillmentRequestId/shipped - Changing OFR status to SHIPPED")
+
+        return try {
+            val message = orderFulfillmentService.changeOfrStatusToShipped(
+                fulfillmentRequestId,
+                request.loadingTaskId,
+                request.packagesToLoad,
+                authToken
+            )
+
+            ResponseEntity.ok(
+                ApiResponse.success(
+                    message,
+                    "OFR status changed to SHIPPED successfully"
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error changing OFR status to SHIPPED: ${e.message}", e)
+            val status = if (e.message?.contains("not found", ignoreCase = true) == true) {
+                HttpStatus.NOT_FOUND
+            } else {
+                HttpStatus.INTERNAL_SERVER_ERROR
+            }
+
+            ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(e.message ?: "Failed to change OFR status to SHIPPED"))
+        }
+    }
+
+    /**
      * Get OFR Stage Summary
      * GET /api/v1/orders/fulfillment-requests/stage-summary
      *
