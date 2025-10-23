@@ -69,6 +69,35 @@ class OFRPackageMgmtService(
     }
 
     /**
+     * Get All Packages WITH Assigned Items (For Pack Move Task Details)
+     * Returns complete package details including assigned items array
+     */
+    fun getPackagesWithAssignedItems(fulfillmentId: String): List<PackageResponse> {
+        logger.info("Get all packages with assigned items for OFR: {}", fulfillmentId)
+
+        val ofr = ofrRepository.findByFulfillmentId(fulfillmentId)
+            .orElseThrow { OrderFulfillmentRequestNotFoundException("Order Fulfillment Request not found: $fulfillmentId") }
+
+        if (ofr.packages.isEmpty()) {
+            logger.info("No packages found for OFR: {}", fulfillmentId)
+            return emptyList()
+        }
+
+        return ofr.packages.map { pkg ->
+            PackageResponse(
+                packageId = pkg.packageId,
+                packageBarcode = pkg.packageBarcode,
+                dimensions = pkg.dimensions,
+                weight = pkg.weight,
+                assignedItems = pkg.assignedItems,
+                createdAt = pkg.createdAt,
+                createdByTask = pkg.createdByTask,
+                savedAt = pkg.savedAt
+            )
+        }
+    }
+
+    /**
      * Validate All Items Packaged
      * Checks if all items from line items are assigned to packages
      */

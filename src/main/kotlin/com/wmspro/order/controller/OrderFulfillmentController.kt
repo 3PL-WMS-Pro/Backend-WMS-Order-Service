@@ -662,6 +662,48 @@ class OrderFulfillmentController(
     }
 
     /**
+     * Get All Packages WITH Assigned Items (For Pack Move Task Details)
+     * Method: GET
+     * Endpoint: /api/v1/orders/fulfillment-requests/{fulfillmentId}/packages-full
+     */
+    @GetMapping("/{fulfillmentId}/packages-full")
+    fun getPackagesWithAssignedItems(
+        @PathVariable fulfillmentId: String
+    ): ResponseEntity<ApiResponse<List<PackageResponse>>> {
+        logger.info("GET /api/v1/orders/fulfillment-requests/{}/packages-full", fulfillmentId)
+
+        return try {
+            val packages = ofrPackageMgmtService.getPackagesWithAssignedItems(fulfillmentId)
+
+            if (packages.isEmpty()) {
+                ResponseEntity.ok(
+                    ApiResponse(
+                        success = false,
+                        message = "No packages found for this order fulfillment request",
+                        data = emptyList()
+                    )
+                )
+            } else {
+                ResponseEntity.ok(
+                    ApiResponse.success(packages, "Packages with assigned items retrieved successfully")
+                )
+            }
+
+        } catch (e: Exception) {
+            logger.error("Error retrieving packages with assigned items for OFR: {}", fulfillmentId, e)
+            val status = if (e.message?.contains("not found", ignoreCase = true) == true) {
+                HttpStatus.NOT_FOUND
+            } else {
+                HttpStatus.INTERNAL_SERVER_ERROR
+            }
+
+            ResponseEntity
+                .status(status)
+                .body(ApiResponse.error(e.message ?: "Failed to retrieve packages with assigned items"))
+        }
+    }
+
+    /**
      * Validate All Items Packaged
      * Method: GET
      * Endpoint: /api/v1/orders/fulfillment-requests/{fulfillmentId}/validate-packaging
