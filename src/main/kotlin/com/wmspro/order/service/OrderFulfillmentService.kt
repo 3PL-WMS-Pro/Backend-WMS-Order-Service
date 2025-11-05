@@ -88,6 +88,7 @@ class OrderFulfillmentService(
             ),
             shippingDetails = request.shippingDetails.let {
                 ShippingDetails(
+                    awbCondition = it?.awbCondition ?: AwbCondition.CREATE_FOR_CUSTOMER,
                     carrier = it?.carrier,
                     requestedServiceType = it?.requestedServiceType
                 )

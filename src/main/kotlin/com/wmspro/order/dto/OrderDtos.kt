@@ -85,6 +85,7 @@ data class LineItemDto(
 )
 
 data class ShippingDetailsDto(
+    val awbCondition: AwbCondition? = null,
     val carrier: String? = null,
     val requestedServiceType: ServiceType? = null
 )
