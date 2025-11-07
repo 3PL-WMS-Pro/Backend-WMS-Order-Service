@@ -263,6 +263,10 @@ class OrderFulfillmentService(
                     )
                 )
             }
+
+            ExecutionApproach.DIRECT_PROCESSING -> {
+                throw InvalidOrderRequestException("DIRECT_PROCESSING approach should use the createDirectOfrAndProcess method instead")
+            }
         }
 
         // Step 8: Call Task Service to create task
@@ -288,6 +292,11 @@ class OrderFulfillmentService(
 
             ExecutionApproach.PICK_PACK_MOVE_TOGETHER -> {
                 ofr.pickPackMoveTaskId = taskData.taskCode
+            }
+
+            ExecutionApproach.DIRECT_PROCESSING -> {
+                // Should never reach here
+                throw InvalidOrderRequestException("DIRECT_PROCESSING approach should use the createDirectOfrAndProcess method instead")
             }
         }
 
@@ -1038,5 +1047,339 @@ class OrderFulfillmentService(
         }
 
         return message
+    }
+
+    /**
+     * Direct OFR Processing (Web-based Express Fulfillment)
+     * Creates OFR and processes it immediately without task creation
+     *
+     * Flow:
+     * 1. Generate OFR ID and GIN number
+     * 2. Build line items from packages
+     * 3. Move all items to IN_TRANSIT location
+     * 4. Generate AWB if requested
+     * 5. Save OFR with SHIPPED status
+     */
+    @Transactional
+    fun createDirectOfrAndProcess(request: CreateDirectOfrRequest, createdBy: String?, authToken: String): DirectOfrResponse {
+        logger.info("Creating Direct OFR for account: {}", request.accountId)
+
+        // Step 1: Generate IDs
+        val fulfillmentId = sequenceGeneratorService.generateOfrId()
+        val ginNumber = sequenceGeneratorService.generateGinNumber()
+        logger.info("Generated fulfillment ID: {} and GIN: {}", fulfillmentId, ginNumber)
+
+        // Step 2: Build LineItems from packages
+        // Group items by SKU/itemBarcode to create line items
+        val allItems = request.packages.flatMap { pkg ->
+            pkg.items.map { item -> item }
+        }
+
+        val itemGroups = allItems.groupBy { item ->
+            if (item.itemType == ItemType.SKU_ITEM && item.skuId != null) {
+                "SKU-${item.skuId}"
+            } else {
+                "ITEM-${item.itemBarcode}"
+            }
+        }
+
+        val lineItems = mutableListOf<LineItem>()
+        itemGroups.forEach { (key, items) ->
+            val lineItemId = sequenceGeneratorService.generateLineItemId()
+            val firstItem = items.first()
+
+            val lineItem = LineItem(
+                lineItemId = lineItemId,
+                itemType = firstItem.itemType,
+                skuId = firstItem.skuId,
+                itemBarcode = if (firstItem.itemType != ItemType.SKU_ITEM) firstItem.itemBarcode else null,
+                quantityOrdered = items.size,
+                quantityPicked = items.size,    // Already picked
+                quantityShipped = items.size,   // Already shipped
+                allocatedItems = items.map { item ->
+                    AllocatedItem(
+                        storageItemId = item.storageItemId,
+                        location = "IN_TRANSIT",
+                        picked = true,
+                        pickedAt = LocalDateTime.now(),
+                        pickedBy = createdBy
+                    )
+                }.toMutableList()
+            )
+
+            lineItems.add(lineItem)
+        }
+
+        // Step 3: Build Packages with AssignedItems
+        val packages = request.packages.mapIndexed { index, pkgDto ->
+            Package(
+                packageId = sequenceGeneratorService.generatePackageId(),
+                packageBarcode = pkgDto.packageBarcode,
+                dimensions = PackageDimensions(
+                    length = pkgDto.dimensions.length,
+                    width = pkgDto.dimensions.width,
+                    height = pkgDto.dimensions.height,
+                    unit = pkgDto.dimensions.unit
+                ),
+                weight = PackageWeight(
+                    value = pkgDto.weight.value,
+                    unit = pkgDto.weight.unit
+                ),
+                assignedItems = pkgDto.items.map { item ->
+                    AssignedItem(
+                        storageItemId = item.storageItemId,
+                        skuId = item.skuId,
+                        itemType = item.itemType,
+                        itemBarcode = item.itemBarcode
+                    )
+                }.toMutableList(),
+                loadedOnTruck = true,
+                truckNumber = request.truckNumber,
+                loadedAt = LocalDateTime.now(),
+                createdAt = LocalDateTime.now()
+            )
+        }.toMutableList()
+
+        logger.info("Built {} line items and {} packages", lineItems.size, packages.size)
+
+        // Step 4: Update ALL storage items to IN_TRANSIT
+        logger.info("Updating {} storage items to IN_TRANSIT", allItems.size)
+        var inventoryUpdateSuccessCount = 0
+        var inventoryUpdateFailureCount = 0
+
+        allItems.forEach { item ->
+            try {
+                inventoryServiceClient.changeStorageItemLocation(
+                    itemBarcode = item.itemBarcode,
+                    request = com.wmspro.order.client.ChangeLocationRequest(
+                        newLocation = "IN_TRANSIT",
+                        taskCode = fulfillmentId,
+                        action = "DIRECT_SHIPPED",
+                        notes = "Direct processing - item shipped immediately via web portal",
+                        reason = "Express fulfillment without task execution"
+                    ),
+                    authToken = authToken
+                )
+                inventoryUpdateSuccessCount++
+                logger.debug("Updated inventory location for item: {}", item.itemBarcode)
+            } catch (e: Exception) {
+                inventoryUpdateFailureCount++
+                logger.error("Failed to update inventory location for ${item.itemBarcode}: ${e.message}", e)
+            }
+        }
+
+        logger.info("Inventory updates: {} succeeded, {} failed", inventoryUpdateSuccessCount, inventoryUpdateFailureCount)
+
+        // Step 5: Handle AWB generation if requested
+        var awbDetails: AwbDetailsResponse? = null
+        val shippingDetails = if (request.awbCondition == AwbCondition.CREATE_FOR_CUSTOMER) {
+            logger.info("Generating AWB for direct OFR")
+            try {
+                // Create a temporary OFR for AWB generation
+                val tempOfr = OrderFulfillmentRequest(
+                    fulfillmentId = fulfillmentId,
+                    accountId = request.accountId,
+                    fulfillmentSource = request.fulfillmentSource,
+                    executionApproach = ExecutionApproach.DIRECT_PROCESSING,
+                    customerInfo = CustomerInfo(
+                        name = request.customerInfo.name,
+                        email = request.customerInfo.email,
+                        phone = request.customerInfo.phone
+                    ),
+                    shippingAddress = ShippingAddress(
+                        name = request.shippingAddress.name,
+                        company = request.shippingAddress.company,
+                        addressLine1 = request.shippingAddress.addressLine1,
+                        addressLine2 = request.shippingAddress.addressLine2,
+                        city = request.shippingAddress.city,
+                        state = request.shippingAddress.state,
+                        country = request.shippingAddress.country,
+                        postalCode = request.shippingAddress.postalCode,
+                        phone = request.shippingAddress.phone
+                    ),
+                    shippingDetails = ShippingDetails(
+                        awbCondition = request.awbCondition,
+                        carrier = request.shippingDetails?.carrier,
+                        requestedServiceType = request.shippingDetails?.requestedServiceType
+                    ),
+                    packages = packages
+                )
+                ofrRepository.save(tempOfr)
+
+                val awbConfig = createAwbForAllPackages(fulfillmentId)
+
+                awbDetails = AwbDetailsResponse(
+                    shipmentId = awbConfig.shipmentId,
+                    awbNumber = awbConfig.awbNumber,
+                    carrier = awbConfig.carrier,
+                    trackingUrl = awbConfig.trackingUrl,
+                    shippingLabelPdf = awbConfig.shippingLabelPdf,
+                    awbPdf = awbConfig.awbPdf
+                )
+
+                ShippingDetails(
+                    awbCondition = request.awbCondition,
+                    carrier = awbConfig.carrier,
+                    requestedServiceType = request.shippingDetails?.requestedServiceType,
+                    shipmentId = awbConfig.shipmentId,
+                    awbNumber = awbConfig.awbNumber,
+                    awbPdf = awbConfig.awbPdf,
+                    trackingUrl = awbConfig.trackingUrl,
+                    shippingLabelPdf = awbConfig.shippingLabelPdf
+                )
+            } catch (e: Exception) {
+                logger.error("AWB generation failed: ${e.message}", e)
+                ShippingDetails(
+                    awbCondition = request.awbCondition,
+                    carrier = request.shippingDetails?.carrier,
+                    requestedServiceType = request.shippingDetails?.requestedServiceType
+                )
+            }
+        } else {
+            ShippingDetails(
+                awbCondition = request.awbCondition,
+                carrier = request.shippingDetails?.carrier,
+                requestedServiceType = request.shippingDetails?.requestedServiceType
+            )
+        }
+
+        // Step 6: Build GIN notification with attachments
+        val ginNotification = GinNotification(
+            sentToCustomer = false,
+            ginDate = request.ginDate,
+            attachments = buildGinAttachments(request.loadingDocuments)
+        )
+
+        // Step 7: Build Loading Documents
+        val loadingDocuments = request.loadingDocuments?.let {
+            com.wmspro.order.model.LoadingDocuments(
+                packagePhotosUrls = it.packagePhotosUrls,
+                truckDriverPhotoUrl = it.truckDriverPhotoUrl,
+                truckDriverIdProofUrl = it.truckDriverIdProofUrl
+            )
+        }
+
+        // Step 8: Build complete OFR
+        val ofr = OrderFulfillmentRequest(
+            fulfillmentId = fulfillmentId,
+            accountId = request.accountId,
+            fulfillmentSource = request.fulfillmentSource,
+            externalOrderId = request.externalOrderId,
+            externalOrderNumber = request.externalOrderNumber,
+            fulfillmentStatus = FulfillmentStatus.SHIPPED,
+            priority = request.priority,
+            executionApproach = ExecutionApproach.DIRECT_PROCESSING,
+
+            // No task IDs - direct processing
+            pickingTaskId = null,
+            packMoveTaskId = null,
+            pickPackMoveTaskId = null,
+            loadingTaskId = null,
+
+            customerInfo = CustomerInfo(
+                name = request.customerInfo.name,
+                email = request.customerInfo.email,
+                phone = request.customerInfo.phone
+            ),
+            shippingAddress = ShippingAddress(
+                name = request.shippingAddress.name,
+                company = request.shippingAddress.company,
+                addressLine1 = request.shippingAddress.addressLine1,
+                addressLine2 = request.shippingAddress.addressLine2,
+                city = request.shippingAddress.city,
+                state = request.shippingAddress.state,
+                country = request.shippingAddress.country,
+                postalCode = request.shippingAddress.postalCode,
+                phone = request.shippingAddress.phone
+            ),
+            lineItems = lineItems,
+            packages = packages,
+            shippingDetails = shippingDetails,
+            orderValue = request.orderValue?.let {
+                OrderValue(
+                    subtotal = it.subtotal,
+                    shipping = it.shipping,
+                    tax = it.tax,
+                    total = it.total,
+                    currency = it.currency
+                )
+            },
+
+            ginNumber = ginNumber,
+            ginNotification = ginNotification,
+            loadingDocuments = loadingDocuments,
+
+            statusHistory = mutableListOf(
+                StatusHistory(
+                    status = FulfillmentStatus.RECEIVED,
+                    timestamp = LocalDateTime.now(),
+                    user = createdBy,
+                    automated = true,
+                    notes = "Direct processing initiated",
+                    currentStatus = false
+                ),
+                StatusHistory(
+                    status = FulfillmentStatus.SHIPPED,
+                    timestamp = LocalDateTime.now(),
+                    user = createdBy,
+                    automated = true,
+                    notes = "Direct processing - items shipped immediately via truck ${request.truckNumber}",
+                    currentStatus = true
+                )
+            ),
+
+            notes = request.notes,
+            createdBy = createdBy,
+            createdAt = LocalDateTime.now(),
+            updatedAt = LocalDateTime.now()
+        )
+
+        // Step 9: Save OFR
+        val savedOfr = ofrRepository.save(ofr)
+        logger.info("Direct OFR created successfully: {} with GIN: {}", savedOfr.fulfillmentId, savedOfr.ginNumber)
+
+        // Step 10: Build and return response
+        return DirectOfrResponse(
+            fulfillmentId = savedOfr.fulfillmentId,
+            ginNumber = savedOfr.ginNumber!!,
+            fulfillmentStatus = savedOfr.fulfillmentStatus.name,
+            accountId = savedOfr.accountId,
+            totalPackages = savedOfr.packages.size,
+            totalItems = savedOfr.lineItems.sumOf { it.quantityOrdered },
+            truckNumber = request.truckNumber,
+            awbGenerated = awbDetails != null,
+            awbDetails = awbDetails,
+            createdAt = savedOfr.createdAt,
+            updatedAt = savedOfr.updatedAt
+        )
+    }
+
+    /**
+     * Helper: Build GIN attachments from loading documents
+     */
+    private fun buildGinAttachments(loadingDocs: LoadingDocumentsDto?): List<GinAttachment> {
+        if (loadingDocs == null) return emptyList()
+
+        val attachments = mutableListOf<GinAttachment>()
+
+        // Add signed GIN
+        loadingDocs.signedGinUrl?.let {
+            attachments.add(GinAttachment(fileName = "Signed_GIN.pdf", fileUrl = it))
+        }
+
+        // Add package photos
+        loadingDocs.packagePhotosUrls.forEachIndexed { index, url ->
+            attachments.add(GinAttachment(fileName = "Package_Photo_${index + 1}.jpg", fileUrl = url))
+        }
+
+        // Add driver documents
+        loadingDocs.truckDriverPhotoUrl?.let {
+            attachments.add(GinAttachment(fileName = "Driver_Photo.jpg", fileUrl = it))
+        }
+        loadingDocs.truckDriverIdProofUrl?.let {
+            attachments.add(GinAttachment(fileName = "Driver_ID_Proof.pdf", fileUrl = it))
+        }
+
+        return attachments
     }
 }

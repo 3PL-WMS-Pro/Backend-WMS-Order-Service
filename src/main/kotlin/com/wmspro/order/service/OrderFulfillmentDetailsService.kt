@@ -424,6 +424,7 @@ class OrderFulfillmentDetailsService(
         val taskCode = when (ofr.executionApproach) {
             ExecutionApproach.PICK_PACK_MOVE_TOGETHER -> ofr.pickPackMoveTaskId
             ExecutionApproach.SEPARATED_PICKING -> ofr.packMoveTaskId
+            ExecutionApproach.DIRECT_PROCESSING -> throw IllegalArgumentException("DIRECT_PROCESSING approach does not have tasks")
         } ?: throw IllegalArgumentException("No task found for this OFR")
 
         val taskDetails = taskServiceClient.getTaskWebDetails(taskCode, ofr.accountId).data

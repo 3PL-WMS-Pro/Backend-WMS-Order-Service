@@ -5,5 +5,6 @@ enum class FulfillmentSource {
     MANUAL,
     API,
     EMAIL,
-    PHONE
+    PHONE,
+    WEB_PORTAL  // Web-based direct processing
 }

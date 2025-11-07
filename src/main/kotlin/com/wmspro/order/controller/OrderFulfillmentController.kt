@@ -62,6 +62,42 @@ class OrderFulfillmentController(
     }
 
     /**
+     * Direct OFR Processing (Web-based Express Fulfillment)
+     * Method: POST
+     * Endpoint: /api/v1/orders/fulfillment-requests/direct
+     */
+    @PostMapping("/direct")
+    fun createDirectOfrAndProcess(
+        @Valid @RequestBody request: CreateDirectOfrRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<DirectOfrResponse>> {
+        logger.info("Direct OFR Processing: Create Order Fulfillment Request for account: {}", request.accountId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+        val username = try {
+            jwtTokenExtractor.extractUsername(authToken)
+        } catch (e: Exception) {
+            null
+        }
+
+        return try {
+            val response = orderFulfillmentService.createDirectOfrAndProcess(request, username, authToken)
+
+            logger.info("Direct OFR created successfully: {} with GIN: {}", response.fulfillmentId, response.ginNumber)
+
+            ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success(response, "Direct OFR created and processed successfully"))
+
+        } catch (e: Exception) {
+            logger.error("Error creating Direct OFR", e)
+            ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(e.message ?: "Failed to create Direct OFR"))
+        }
+    }
+
+    /**
      * Get All OFRs with optional filtering
      * Method: GET
      * Endpoint: /api/v1/orders/fulfillment-requests

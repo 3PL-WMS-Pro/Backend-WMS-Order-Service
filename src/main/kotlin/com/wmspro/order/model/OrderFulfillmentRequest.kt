@@ -60,6 +60,9 @@ data class OrderFulfillmentRequest(
     val ginNumber: String? = null,
     val ginNotification: GinNotification? = null,
 
+    // Loading documents (for direct processing)
+    val loadingDocuments: LoadingDocuments? = null,
+
     val notes: String? = null,
     val tags: List<String> = listOf(),
     val customFields: Map<String, Any> = mapOf(),
@@ -220,4 +223,10 @@ data class GinNotification(
 data class GinAttachment(
     val fileName: String,
     val fileUrl: String  // S3 URL, local path, or Base64 encoded string
+)
+
+data class LoadingDocuments(
+    val packagePhotosUrls: List<String> = listOf(),
+    val truckDriverPhotoUrl: String? = null,
+    val truckDriverIdProofUrl: String? = null
 )
