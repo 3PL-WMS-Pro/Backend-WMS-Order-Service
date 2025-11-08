@@ -155,7 +155,13 @@ class CustomOrderFulfillmentRequestRepositoryImpl(
             OfrStage.LOADING_DONE_GIN_PENDING -> {
                 // loadingTaskId exists AND != null AND ginNotification.sentToCustomer = false
                 Criteria().andOperator(
-                    Criteria.where("loadingTaskId").exists(true).ne(null),
+                    Criteria().orOperator(
+                        Criteria.where("loadingTaskId").exists(true).ne(null),
+                        Criteria.where("statusHistory").elemMatch(
+                            Criteria.where("status").`is`(FulfillmentStatus.SHIPPED)
+                                .and("currentStatus").`is`(true)
+                        )
+                    ),
                     Criteria.where("ginNotification.sentToCustomer").`is`(false)
                 )
             }
