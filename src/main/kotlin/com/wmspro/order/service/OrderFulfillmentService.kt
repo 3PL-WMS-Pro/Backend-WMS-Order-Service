@@ -1080,18 +1080,18 @@ class OrderFulfillmentService(
         val providedBarcodes = mutableSetOf<String>()
 
         request.packages.forEach { pkg ->
-            pkg.packageBarcode?.let { barcode ->
-                // Check for duplicates within the request
-                if (!providedBarcodes.add(barcode)) {
-                    duplicateBarcodes.add(barcode)
-                    logger.warn("Duplicate package barcode in request: {}", barcode)
-                }
+            val barcode = pkg.packageBarcode
 
-                // Check if barcode already exists in database
-                if (ofrRepository.existsByPackagesPackageBarcode(barcode)) {
-                    logger.error("Package barcode already exists in system: {}", barcode)
-                    throw InvalidOrderRequestException("Package barcode '$barcode' has already been used in another order")
-                }
+            // Check for duplicates within the request
+            if (!providedBarcodes.add(barcode)) {
+                duplicateBarcodes.add(barcode)
+                logger.warn("Duplicate package barcode in request: {}", barcode)
+            }
+
+            // Check if barcode already exists in database
+            if (ofrRepository.existsByPackagesPackageBarcode(barcode)) {
+                logger.error("Package barcode already exists in system: {}", barcode)
+                throw InvalidOrderRequestException("Package barcode '$barcode' has already been used in another order")
             }
         }
 

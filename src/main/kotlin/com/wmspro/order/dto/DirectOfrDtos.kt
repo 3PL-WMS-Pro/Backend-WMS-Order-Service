@@ -57,7 +57,8 @@ data class DirectShippingDetailsDto(
 )
 
 data class DirectPackageDto(
-    val packageBarcode: String? = null,
+    @field:NotBlank(message = "Package barcode is required")
+    val packageBarcode: String,
 
     @field:NotNull(message = "Package dimensions are required")
     val dimensions: PackageDimensionsDto,
