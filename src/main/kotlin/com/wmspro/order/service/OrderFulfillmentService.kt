@@ -1055,10 +1055,16 @@ class OrderFulfillmentService(
      *
      * Flow:
      * 1. Generate OFR ID and GIN number
-     * 2. Build line items from packages
-     * 3. Move all items to IN_TRANSIT location
-     * 4. Generate AWB if requested
-     * 5. Save OFR with SHIPPED status
+     * 2. Validate package barcodes are unique and not already used
+     * 3. Build line items from packages
+     * 4. Build packages with assigned items
+     * 5. Move all items to IN_TRANSIT location
+     * 6. Generate AWB if requested
+     * 7. Build GIN notification with attachments
+     * 8. Build loading documents
+     * 9. Build complete OFR
+     * 10. Save OFR with SHIPPED status
+     * 11. Return response
      */
     @Transactional
     fun createDirectOfrAndProcess(request: CreateDirectOfrRequest, createdBy: String?, authToken: String): DirectOfrResponse {
@@ -1069,7 +1075,31 @@ class OrderFulfillmentService(
         val ginNumber = sequenceGeneratorService.generateGinNumber()
         logger.info("Generated fulfillment ID: {} and GIN: {}", fulfillmentId, ginNumber)
 
-        // Step 2: Build LineItems from packages
+        // Step 2: Validate package barcodes are unique and not already used
+        val duplicateBarcodes = mutableListOf<String>()
+        val providedBarcodes = mutableSetOf<String>()
+
+        request.packages.forEach { pkg ->
+            pkg.packageBarcode?.let { barcode ->
+                // Check for duplicates within the request
+                if (!providedBarcodes.add(barcode)) {
+                    duplicateBarcodes.add(barcode)
+                    logger.warn("Duplicate package barcode in request: {}", barcode)
+                }
+
+                // Check if barcode already exists in database
+                if (ofrRepository.existsByPackagesPackageBarcode(barcode)) {
+                    logger.error("Package barcode already exists in system: {}", barcode)
+                    throw InvalidOrderRequestException("Package barcode '$barcode' has already been used in another order")
+                }
+            }
+        }
+
+        if (duplicateBarcodes.isNotEmpty()) {
+            throw InvalidOrderRequestException("Duplicate package barcodes found in request: ${duplicateBarcodes.joinToString(", ")}")
+        }
+
+        // Step 3: Build LineItems from packages
         // Group items by SKU/itemBarcode to create line items
         val allItems = request.packages.flatMap { pkg ->
             pkg.items.map { item -> item }
@@ -1110,7 +1140,7 @@ class OrderFulfillmentService(
             lineItems.add(lineItem)
         }
 
-        // Step 3: Build Packages with AssignedItems
+        // Step 4: Build Packages with AssignedItems
         val packages = request.packages.mapIndexed { index, pkgDto ->
             Package(
                 packageId = sequenceGeneratorService.generatePackageId(),
@@ -1142,7 +1172,7 @@ class OrderFulfillmentService(
 
         logger.info("Built {} line items and {} packages", lineItems.size, packages.size)
 
-        // Step 4: Update ALL storage items to IN_TRANSIT
+        // Step 5: Update ALL storage items to IN_TRANSIT
         logger.info("Updating {} storage items to IN_TRANSIT", allItems.size)
         var inventoryUpdateSuccessCount = 0
         var inventoryUpdateFailureCount = 0
@@ -1170,7 +1200,7 @@ class OrderFulfillmentService(
 
         logger.info("Inventory updates: {} succeeded, {} failed", inventoryUpdateSuccessCount, inventoryUpdateFailureCount)
 
-        // Step 5: Handle AWB generation if requested
+        // Step 6: Handle AWB generation if requested
         var awbDetails: AwbDetailsResponse? = null
         val shippingDetails = if (request.awbCondition == AwbCondition.CREATE_FOR_CUSTOMER) {
             logger.info("Generating AWB for direct OFR")
@@ -1243,14 +1273,14 @@ class OrderFulfillmentService(
             )
         }
 
-        // Step 6: Build GIN notification with attachments
+        // Step 7: Build GIN notification with attachments
         val ginNotification = GinNotification(
             sentToCustomer = false,
             ginDate = request.ginDate,
             attachments = buildGinAttachments(request.loadingDocuments)
         )
 
-        // Step 7: Build Loading Documents
+        // Step 8: Build Loading Documents
         val loadingDocuments = request.loadingDocuments?.let {
             com.wmspro.order.model.LoadingDocuments(
                 packagePhotosUrls = it.packagePhotosUrls,
@@ -1259,7 +1289,7 @@ class OrderFulfillmentService(
             )
         }
 
-        // Step 8: Build complete OFR
+        // Step 9: Build complete OFR
         val ofr = OrderFulfillmentRequest(
             fulfillmentId = fulfillmentId,
             accountId = request.accountId,
@@ -1334,11 +1364,11 @@ class OrderFulfillmentService(
             updatedAt = LocalDateTime.now()
         )
 
-        // Step 9: Save OFR
+        // Step 10: Save OFR
         val savedOfr = ofrRepository.save(ofr)
         logger.info("Direct OFR created successfully: {} with GIN: {}", savedOfr.fulfillmentId, savedOfr.ginNumber)
 
-        // Step 10: Build and return response
+        // Step 11: Build and return response
         return DirectOfrResponse(
             fulfillmentId = savedOfr.fulfillmentId,
             ginNumber = savedOfr.ginNumber!!,
