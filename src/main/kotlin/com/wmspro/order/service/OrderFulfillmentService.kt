@@ -1184,7 +1184,7 @@ class OrderFulfillmentService(
                     request = com.wmspro.order.client.ChangeLocationRequest(
                         newLocation = "IN_TRANSIT",
                         taskCode = fulfillmentId,
-                        action = "DIRECT_SHIPPED",
+                        action = "SHIPPED",
                         notes = "Direct processing - item shipped immediately via web portal",
                         reason = "Express fulfillment without task execution"
                     ),
