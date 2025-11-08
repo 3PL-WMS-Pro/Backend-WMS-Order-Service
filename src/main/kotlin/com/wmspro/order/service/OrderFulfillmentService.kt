@@ -703,6 +703,7 @@ class OrderFulfillmentService(
             createdAt = ofr.createdAt,
             updatedAt = ofr.updatedAt,
             customerName = ofr.customerInfo.name,
+            accountId = ofr.accountId,
             accountName = accountName,
             pickingId = ofr.pickingTaskId,
             packMoveId = ofr.packMoveTaskId,

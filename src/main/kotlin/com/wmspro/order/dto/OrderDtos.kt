@@ -233,6 +233,7 @@ data class OfrListItemResponse(
 
     // Customer details
     val customerName: String,
+    val accountId: Long,
     val accountName: String?,
 
     // Stage-specific fields
