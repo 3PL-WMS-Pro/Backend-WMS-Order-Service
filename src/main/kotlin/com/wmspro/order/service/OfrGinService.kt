@@ -1,25 +1,33 @@
 package com.wmspro.order.service
 
+import com.wmspro.common.jwt.JwtTokenExtractor
 import com.wmspro.common.service.AccountService
 import com.wmspro.order.dto.*
 import com.wmspro.order.enums.FulfillmentStatus
 import com.wmspro.order.exception.OrderFulfillmentRequestNotFoundException
+import com.wmspro.order.model.GinNotification
 import com.wmspro.order.model.OrderFulfillmentRequest
 import com.wmspro.order.repository.OrderFulfillmentRequestRepository
 import jakarta.validation.ValidationException
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDateTime
 
 /**
  * Service for OFR GIN Operations (APIs 174-176)
  * Phase 8.1: GIN discovery and package retrieval for Order Fulfillment Requests
+ * Phase 8.2: GIN PDF generation and email sending
  */
 @Service
 @Transactional(readOnly = true)
 class OfrGinService(
     private val ofrRepository: OrderFulfillmentRequestRepository,
-    private val accountService: AccountService
+    private val accountService: AccountService,
+    private val ginDataAggregationService: GinDataAggregationService,
+    private val ginPdfGenerationService: GinPdfGenerationService,
+    private val ginEmailService: GinEmailService,
+    private val jwtTokenExtractor: JwtTokenExtractor
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -273,5 +281,78 @@ class OfrGinService(
             // Round to 2 decimal places
             (it * 100).toInt() / 100.0
         }
+    }
+
+    // ========== GIN PDF AND EMAIL OPERATIONS ==========
+
+    /**
+     * Generate GIN PDF for preview/download
+     */
+    fun generateGinPdf(fulfillmentId: String, authToken: String): ByteArray {
+        logger.info("Generating GIN PDF for fulfillment request: {}", fulfillmentId)
+
+        // Aggregate GIN data
+        val ginData = ginDataAggregationService.aggregateGinData(fulfillmentId, authToken)
+
+        // Generate PDF
+        return ginPdfGenerationService.generateGinPdf(ginData)
+    }
+
+    /**
+     * Get default GIN email template content
+     */
+    fun getDefaultGinEmailTemplate(fulfillmentId: String, authToken: String): GinEmailTemplateResponse {
+        logger.info("Getting default GIN email template for fulfillment request: {}", fulfillmentId)
+
+        // Fetch OFR to get customer info
+        val ofr = ofrRepository.findById(fulfillmentId).orElse(null)
+            ?: throw IllegalArgumentException("Order Fulfillment Request not found: $fulfillmentId")
+
+        val ginNumber = ofr.ginNumber ?: "N/A"
+        val customerName = ofr.customerInfo.name
+
+        return ginEmailService.getDefaultGinEmailTemplate(ginNumber, customerName)
+    }
+
+    /**
+     * Send GIN email with PDF attachment
+     */
+    @Transactional
+    fun sendGinEmail(fulfillmentId: String, request: SendGinRequest, authToken: String) {
+        logger.info("Sending GIN email for fulfillment request: {}", fulfillmentId)
+
+        // 1. Generate PDF
+        val pdfBytes = generateGinPdf(fulfillmentId, authToken)
+
+        // 2. Fetch OFR
+        val ofr = ofrRepository.findById(fulfillmentId).orElse(null)
+            ?: throw IllegalArgumentException("Order Fulfillment Request not found: $fulfillmentId")
+
+        val ginNumber = ofr.ginNumber ?: fulfillmentId
+
+        // 3. Send email
+        ginEmailService.sendGinEmail(request, pdfBytes, ginNumber)
+
+        // 4. Update fulfillment request with GIN notification details
+        val username = jwtTokenExtractor.extractUsername(authToken)
+
+        val updatedGinNotification = GinNotification(
+            sentToCustomer = true,
+            sentAt = LocalDateTime.now(),
+            ginDate = LocalDateTime.now(),
+            toEmail = request.toEmail,
+            ccEmails = request.ccEmails,
+            subject = request.subject,
+            emailContent = request.emailContent
+        )
+
+        val updatedOFR = ofr.copy(
+            ginNotification = updatedGinNotification,
+            updatedBy = username,
+            updatedAt = LocalDateTime.now()
+        )
+
+        ofrRepository.save(updatedOFR)
+        logger.info("Order Fulfillment Request updated with GIN sent status")
     }
 }

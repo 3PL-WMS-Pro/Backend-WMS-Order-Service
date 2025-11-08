@@ -4,13 +4,16 @@ import com.wmspro.common.dto.ApiResponse
 import com.wmspro.order.dto.*
 import com.wmspro.order.service.OfrGinService
 import jakarta.servlet.http.HttpServletRequest
+import jakarta.validation.Valid
 import org.slf4j.LoggerFactory
+import org.springframework.http.HttpStatus
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
 
 /**
  * Controller for OFR GIN Operations (API 174-176)
  * Phase 8.1: GIN discovery and package retrieval for Order Fulfillment Requests
+ * Phase 8.2: GIN PDF generation and email sending
  */
 @RestController
 @RequestMapping("/api/v1/orders/gin")
@@ -163,6 +166,160 @@ class OfrGinController(
                         e.message ?: "Failed to fetch packages for GIN"
                     )
                 )
+        }
+    }
+
+    // ========== GIN PDF AND EMAIL OPERATIONS ==========
+
+    /**
+     * Preview GIN PDF
+     * GET /api/v1/orders/gin/{fulfillmentId}/preview
+     *
+     * Generates and returns GIN PDF for preview in browser without sending email
+     */
+    @GetMapping("/{fulfillmentId}/preview")
+    fun previewGin(
+        @PathVariable fulfillmentId: String,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ByteArray> {
+        logger.info("GET /api/v1/orders/gin/{}/preview", fulfillmentId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+
+        return try {
+            val pdfBytes = ofrGinService.generateGinPdf(fulfillmentId, authToken)
+
+            ResponseEntity.ok()
+                .header("Content-Type", "application/pdf")
+                .header("Content-Disposition", "inline; filename=\"GIN_$fulfillmentId.pdf\"")
+                .body(pdfBytes)
+        } catch (e: IllegalArgumentException) {
+            logger.error("Order Fulfillment Request not found: $fulfillmentId", e)
+            ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        } catch (e: Exception) {
+            logger.error("Error generating GIN PDF", e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        }
+    }
+
+    /**
+     * Download GIN PDF
+     * GET /api/v1/orders/gin/{fulfillmentId}/download
+     *
+     * Generates and downloads GIN PDF file to disk without sending email
+     */
+    @GetMapping("/{fulfillmentId}/download")
+    fun downloadGin(
+        @PathVariable fulfillmentId: String,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ByteArray> {
+        logger.info("GET /api/v1/orders/gin/{}/download", fulfillmentId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+
+        return try {
+            val pdfBytes = ofrGinService.generateGinPdf(fulfillmentId, authToken)
+
+            ResponseEntity.ok()
+                .header("Content-Type", "application/pdf")
+                .header("Content-Disposition", "attachment; filename=\"GIN_$fulfillmentId.pdf\"")
+                .body(pdfBytes)
+        } catch (e: IllegalArgumentException) {
+            logger.error("Order Fulfillment Request not found: $fulfillmentId", e)
+            ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        } catch (e: Exception) {
+            logger.error("Error generating GIN PDF", e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
+        }
+    }
+
+    /**
+     * Get Default GIN Email Template
+     * GET /api/v1/orders/gin/{fulfillmentId}/email-template
+     *
+     * Returns the default email template content for sending GIN
+     */
+    @GetMapping("/{fulfillmentId}/email-template")
+    fun getGinEmailTemplate(
+        @PathVariable fulfillmentId: String,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<GinEmailTemplateResponse>> {
+        logger.info("GET /api/v1/orders/gin/{}/email-template", fulfillmentId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+
+        return try {
+            val emailTemplate = ofrGinService.getDefaultGinEmailTemplate(fulfillmentId, authToken)
+
+            ResponseEntity.ok(
+                ApiResponse.success(
+                    emailTemplate,
+                    "Email template retrieved successfully"
+                )
+            )
+        } catch (e: IllegalArgumentException) {
+            logger.error("Order Fulfillment Request not found: $fulfillmentId", e)
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.error(
+                    e.message ?: "Order Fulfillment Request not found"
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error getting email template", e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                ApiResponse.error(
+                    "Internal server error: ${e.message}"
+                )
+            )
+        }
+    }
+
+    /**
+     * Send GIN Email
+     * POST /api/v1/orders/gin/{fulfillmentId}/send
+     *
+     * Generates GIN PDF and sends it via email to the specified recipients
+     */
+    @PostMapping("/{fulfillmentId}/send")
+    fun sendGinEmail(
+        @PathVariable fulfillmentId: String,
+        @Valid @RequestBody request: SendGinRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<String>> {
+        logger.info("POST /api/v1/orders/gin/{}/send", fulfillmentId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+
+        return try {
+            ofrGinService.sendGinEmail(fulfillmentId, request, authToken)
+
+            ResponseEntity.ok(
+                ApiResponse.success(
+                    "Email sent to ${request.toEmail}",
+                    "GIN email sent successfully"
+                )
+            )
+        } catch (e: IllegalArgumentException) {
+            logger.error("Order Fulfillment Request not found: $fulfillmentId", e)
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.error(
+                    e.message ?: "Order Fulfillment Request not found"
+                )
+            )
+        } catch (e: IllegalStateException) {
+            logger.error("Configuration error: ${e.message}", e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                ApiResponse.error(
+                    e.message ?: "Configuration error"
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error sending GIN email", e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                ApiResponse.error(
+                    "Internal server error: ${e.message}"
+                )
+            )
         }
     }
 }

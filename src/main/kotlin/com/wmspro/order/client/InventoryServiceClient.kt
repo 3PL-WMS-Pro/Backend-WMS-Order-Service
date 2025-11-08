@@ -37,6 +37,24 @@ interface InventoryServiceClient {
         @RequestBody request: ChangeLocationRequest,
         @RequestHeader("Authorization") authToken: String
     ): ApiResponse<ChangeLocationResponse>
+
+    /**
+     * Get bulk storage item details by barcodes
+     * Returns storage item details including dimensions for multiple barcodes
+     */
+    @PostMapping("/bulk-details-by-barcodes")
+    fun getBulkStorageItemDetailsByBarcodes(
+        @RequestBody request: BulkStorageItemDetailsByBarcodesRequest
+    ): ApiResponse<List<StorageItemBarcodeResponse>>
+
+    /**
+     * Get storage item details by storage item IDs
+     * Returns storage item details including dimensions for multiple storage IDs
+     */
+    @PostMapping("/barcodes-by-ids")
+    fun getBarcodesByStorageItemIds(
+        @RequestBody request: StorageItemBarcodesByIdsRequest
+    ): ApiResponse<List<StorageItemBarcodeResponse>>
 }
 
 data class StorageItemIdsByBarcodesRequest(
@@ -87,4 +105,34 @@ data class TransactionInfo(
     val transactionType: String,
     val recordedBy: String,
     val triggerTaskId: String
+)
+
+/**
+ * Request DTO for bulk storage item details by barcodes
+ */
+data class BulkStorageItemDetailsByBarcodesRequest(
+    val barcodes: List<String>
+)
+
+/**
+ * Request DTO for storage item details by IDs
+ */
+data class StorageItemBarcodesByIdsRequest(
+    val storageItemIds: List<Long>
+)
+
+/**
+ * Storage Item Details Response (with dimensions)
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class StorageItemBarcodeResponse(
+    val storageItemId: Long,
+    val itemBarcode: String,
+    val itemType: String,
+    val skuId: Long? = null,
+    val lengthCm: Double? = null,
+    val widthCm: Double? = null,
+    val heightCm: Double? = null,
+    val volumeCbm: Double? = null,
+    val weightKg: Double? = null
 )
