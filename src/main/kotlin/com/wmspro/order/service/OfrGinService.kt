@@ -355,4 +355,37 @@ class OfrGinService(
         ofrRepository.save(updatedOFR)
         logger.info("Order Fulfillment Request updated with GIN sent status")
     }
+
+    /**
+     * Add or update GIN attachment
+     * If an attachment with the same fileName exists, it will be replaced
+     * Otherwise, a new attachment will be added
+     */
+    @Transactional
+    fun addOrUpdateGinAttachment(fulfillmentId: String, request: AddGinAttachmentRequest, authToken: String) {
+        logger.info("Adding/updating GIN attachment for fulfillment request: {}", fulfillmentId)
+
+        // Fetch OFR
+        val ofr = ofrRepository.findById(fulfillmentId).orElse(null)
+            ?: throw IllegalArgumentException("Order Fulfillment Request not found: $fulfillmentId")
+
+        // Get or create GinNotification
+        val ginNotification = ofr.ginNotification ?: GinNotification()
+
+        // Add or update attachment
+        ginNotification.addOrUpdateAttachment(request.fileName, request.fileUrl)
+
+        // Extract username for audit
+        val username = jwtTokenExtractor.extractUsername(authToken)
+
+        // Update OFR
+        val updatedOFR = ofr.copy(
+            ginNotification = ginNotification,
+            updatedBy = username,
+            updatedAt = LocalDateTime.now()
+        )
+
+        ofrRepository.save(updatedOFR)
+        logger.info("GIN attachment added/updated successfully for fulfillment request: {}", fulfillmentId)
+    }
 }

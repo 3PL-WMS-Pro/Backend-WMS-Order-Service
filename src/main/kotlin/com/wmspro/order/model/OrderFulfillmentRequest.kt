@@ -217,8 +217,37 @@ data class GinNotification(
     val emailContent: String? = null,          // Email body content
 
     // Attachments
-    val attachments: List<GinAttachment> = listOf()  // GIN attachments (PDF, signed docs, etc.)
-)
+    val attachments: MutableList<GinAttachment> = mutableListOf()  // GIN attachments (PDF, signed docs, etc.)
+) {
+    /**
+     * Adds or updates an attachment in the attachments list.
+     * If an attachment with the same fileName exists, it will be replaced.
+     * Otherwise, a new attachment will be added.
+     *
+     * @param attachment The attachment to add or update
+     * @return The updated GinNotification instance
+     */
+    fun addOrUpdateAttachment(attachment: GinAttachment): GinNotification {
+        val existingIndex = attachments.indexOfFirst { it.fileName == attachment.fileName }
+        if (existingIndex >= 0) {
+            attachments[existingIndex] = attachment
+        } else {
+            attachments.add(attachment)
+        }
+        return this
+    }
+
+    /**
+     * Adds or updates an attachment by fileName and fileUrl.
+     *
+     * @param fileName The name of the file
+     * @param fileUrl The URL/path of the file
+     * @return The updated GinNotification instance
+     */
+    fun addOrUpdateAttachment(fileName: String, fileUrl: String): GinNotification {
+        return addOrUpdateAttachment(GinAttachment(fileName, fileUrl))
+    }
+}
 
 data class GinAttachment(
     val fileName: String,

@@ -91,3 +91,11 @@ data class GinEmailTemplateResponse(
     val ccEmails: List<String> = emptyList(),
     val bccEmails: List<String> = emptyList()
 )
+
+/**
+ * Request DTO for adding or updating GIN attachment
+ */
+data class AddGinAttachmentRequest(
+    val fileName: String,
+    val fileUrl: String
+)

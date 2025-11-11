@@ -322,4 +322,47 @@ class OfrGinController(
             )
         }
     }
+
+    /**
+     * Add or Update GIN Attachment
+     * POST /api/v1/orders/gin/{fulfillmentId}/attachments
+     *
+     * Adds or updates an attachment in the GIN notification.
+     * If an attachment with the same fileName exists, it will be replaced.
+     */
+    @PostMapping("/{fulfillmentId}/attachments")
+    fun addOrUpdateGinAttachment(
+        @PathVariable fulfillmentId: String,
+        @Valid @RequestBody request: AddGinAttachmentRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<String>> {
+        logger.info("POST /api/v1/orders/gin/{}/attachments", fulfillmentId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+
+        return try {
+            ofrGinService.addOrUpdateGinAttachment(fulfillmentId, request, authToken)
+
+            ResponseEntity.ok(
+                ApiResponse.success(
+                    "Attachment added/updated successfully",
+                    "GIN attachment processed successfully"
+                )
+            )
+        } catch (e: IllegalArgumentException) {
+            logger.error("Order Fulfillment Request not found: $fulfillmentId", e)
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.error(
+                    e.message ?: "Order Fulfillment Request not found"
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error adding/updating GIN attachment", e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                ApiResponse.error(
+                    "Internal server error: ${e.message}"
+                )
+            )
+        }
+    }
 }
