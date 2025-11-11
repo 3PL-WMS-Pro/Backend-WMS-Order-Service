@@ -1388,8 +1388,8 @@ class OrderFulfillmentService(
     /**
      * Helper: Build GIN attachments from loading documents
      */
-    private fun buildGinAttachments(loadingDocs: LoadingDocumentsDto?): List<GinAttachment> {
-        if (loadingDocs == null) return emptyList()
+    private fun buildGinAttachments(loadingDocs: LoadingDocumentsDto?): MutableList<GinAttachment> {
+        if (loadingDocs == null) return mutableListOf()
 
         val attachments = mutableListOf<GinAttachment>()
 
