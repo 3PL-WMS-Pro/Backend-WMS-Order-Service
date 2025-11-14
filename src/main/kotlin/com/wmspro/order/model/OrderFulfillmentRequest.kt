@@ -24,6 +24,12 @@ data class OrderFulfillmentRequest(
     val priority: Priority = Priority.STANDARD,
     val executionApproach: ExecutionApproach,
 
+    /**
+     * Fulfillment type - distinguishes between task-based and quantity-based fulfillment
+     * Default: STANDARD_TASK_BASED for backward compatibility with existing records
+     */
+    val fulfillmentType: FulfillmentType = FulfillmentType.STANDARD_TASK_BASED,
+
     // QC details
     val qcDetails: QcDetails? = null,
 
@@ -44,6 +50,12 @@ data class OrderFulfillmentRequest(
 
     // Packages created during PICK_PACK_MOVE task
     val packages: MutableList<Package> = mutableListOf(),
+
+    /**
+     * Quantity source details - populated for CONTAINER_QUANTITY_BASED and LOCATION_QUANTITY_BASED
+     * Null for STANDARD_TASK_BASED (uses allocatedItems in lineItems instead)
+     */
+    val quantitySourceDetails: QuantitySourceDetails? = null,
 
     // Shipping configuration
     val shippingDetails: ShippingDetails,
@@ -108,7 +120,18 @@ data class LineItem(
     var quantityPicked: Int = 0,
     var quantityShipped: Int = 0,
 
-    val allocatedItems: MutableList<AllocatedItem> = mutableListOf()
+    /**
+     * Allocated items for STANDARD_TASK_BASED fulfillment (Scenario 1)
+     * References StorageItem records
+     */
+    val allocatedItems: MutableList<AllocatedItem> = mutableListOf(),
+
+    /**
+     * Quantity inventory references for CONTAINER_QUANTITY_BASED and LOCATION_QUANTITY_BASED fulfillment (Scenarios 2 & 3)
+     * References QuantityBasedInventory records
+     * Empty for STANDARD_TASK_BASED (uses allocatedItems instead)
+     */
+    val quantityInventoryReferences: MutableList<QuantityInventoryReference> = mutableListOf()
 )
 
 data class AllocatedItem(
@@ -258,4 +281,62 @@ data class LoadingDocuments(
     val packagePhotosUrls: List<String> = listOf(),
     val truckDriverPhotoUrl: String? = null,
     val truckDriverIdProofUrl: String? = null
+)
+
+// Quantity-based fulfillment data classes (Scenarios 2 & 3)
+
+/**
+ * Quantity source details for CONTAINER_QUANTITY_BASED and LOCATION_QUANTITY_BASED fulfillment
+ * Contains detailed information about where quantities were picked from
+ */
+data class QuantitySourceDetails(
+    val itemSources: List<ItemSource> = listOf()
+)
+
+/**
+ * Individual item source - represents one SKU or quantity inventory item with its sources
+ */
+data class ItemSource(
+    // For CONTAINER_QUANTITY_BASED (Scenario 2)
+    val skuId: Long? = null,                                // SKU identifier
+    val totalQuantityPicked: Int? = null,                   // Total picked across all sources
+
+    // For LOCATION_QUANTITY_BASED (Scenario 3)
+    val quantityInventoryId: String? = null,                // QBI ID (e.g., "QBI-100")
+    val itemType: ItemType? = null,                         // PALLET or BOX
+    val description: String? = null,                        // Freetext description
+
+    // Common - source details
+    val containerSources: List<ContainerSource>? = null,    // For Scenario 2
+    val locationSources: List<LocationSource>? = null       // For Scenario 3
+)
+
+/**
+ * Container source - for Scenario 2 (container-based picking)
+ */
+data class ContainerSource(
+    val containerBarcode: String,                           // Container barcode
+    val quantityInventoryId: String,                        // QBI ID
+    val quantityPicked: Int,                                // Quantity from this container
+    val locationCode: String                                // Physical location
+)
+
+/**
+ * Location source - for Scenario 3 (location-based picking)
+ */
+data class LocationSource(
+    val locationCode: String,                               // Physical location
+    val quantityPicked: Int                                 // Quantity from this location
+)
+
+/**
+ * Quantity inventory reference - tracks which QuantityBasedInventory records were used for a line item
+ * Used in LineItem for CONTAINER_QUANTITY_BASED and LOCATION_QUANTITY_BASED fulfillment types
+ */
+data class QuantityInventoryReference(
+    val quantityInventoryId: String,                        // QBI ID (e.g., "QBI-001")
+    val quantityShipped: Int,                               // How much shipped from this QBI
+    val containerBarcode: String? = null,                   // If from Scenario 2
+    val locationCode: String? = null,                       // If from Scenario 3
+    val transactionId: String                               // QuantityTransaction ID created
 )

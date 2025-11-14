@@ -19,7 +19,9 @@ class OrderFulfillmentController(
     private val orderFulfillmentService: OrderFulfillmentService,
     private val orderFulfillmentDetailsService: com.wmspro.order.service.OrderFulfillmentDetailsService,
     private val ofrPackageMgmtService: com.wmspro.order.service.OFRPackageMgmtService,
-    private val jwtTokenExtractor: JwtTokenExtractor
+    private val jwtTokenExtractor: JwtTokenExtractor,
+    private val containerQuantityOutboundService: com.wmspro.order.service.ContainerQuantityOutboundService,
+    private val locationQuantityOutboundService: com.wmspro.order.service.LocationQuantityOutboundService
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -885,6 +887,118 @@ class OrderFulfillmentController(
             ResponseEntity
                 .status(status)
                 .body(ApiResponse.error(e.message ?: "Failed to drop packages at dispatch"))
+        }
+    }
+
+    // ============================================
+    // Quantity-Based Outbound Fulfillment Endpoints
+    // ============================================
+
+    /**
+     * API: Create OFR with Container-Based Quantity Picking (Scenario 2)
+     * Method: POST
+     * Endpoint: /api/v1/orders/fulfillment-requests/create-container-quantity-based
+     *
+     * This API handles post-facto recording of outbound fulfillment where:
+     * - Items were picked from barcoded containers (boxes/pallets)
+     * - SKU quantities were counted manually
+     * - Items were already packed into shipping packages
+     * - System records what was done and reduces inventory
+     */
+    @PostMapping("/create-container-quantity-based")
+    fun createContainerQuantityBasedOFR(
+        @Valid @RequestBody request: CreateContainerQuantityBasedRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<ContainerQuantityBasedOFRResponse>> {
+        logger.info("POST /create-container-quantity-based - accountId: {}", request.accountId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+        val username = try {
+            jwtTokenExtractor.extractUsername(authToken)
+        } catch (e: Exception) {
+            "SYSTEM"
+        }
+
+        return try {
+            val response = containerQuantityOutboundService.createOFR(request, username ?: "SYSTEM")
+
+            logger.info("Container-based quantity OFR created successfully: {}", response.fulfillmentId)
+
+            ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success(response, "Outbound fulfillment request created successfully"))
+
+        } catch (e: IllegalArgumentException) {
+            logger.error("Validation error creating container-based quantity OFR", e)
+            ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(e.message ?: "Validation error"))
+
+        } catch (e: IllegalStateException) {
+            logger.error("State error creating container-based quantity OFR", e)
+            ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(e.message ?: "Conflict error"))
+
+        } catch (e: Exception) {
+            logger.error("Error creating container-based quantity OFR", e)
+            ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(e.message ?: "Internal server error"))
+        }
+    }
+
+    /**
+     * API: Create OFR with Location-Based Quantity Picking (Scenario 3)
+     * Method: POST
+     * Endpoint: /api/v1/orders/fulfillment-requests/create-location-quantity-based
+     *
+     * This API handles post-facto recording of outbound fulfillment where:
+     * - Bulk items (pallets/boxes) were picked from physical locations
+     * - No barcodes involved (pure location-based tracking)
+     * - Items were already packed/loaded
+     * - System records what was done and reduces inventory with location updates
+     */
+    @PostMapping("/create-location-quantity-based")
+    fun createLocationQuantityBasedOFR(
+        @Valid @RequestBody request: CreateLocationQuantityBasedRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<LocationQuantityBasedOFRResponse>> {
+        logger.info("POST /create-location-quantity-based - accountId: {}", request.accountId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+        val username = try {
+            jwtTokenExtractor.extractUsername(authToken)
+        } catch (e: Exception) {
+            "SYSTEM"
+        }
+
+        return try {
+            val response = locationQuantityOutboundService.createOFR(request, username ?: "SYSTEM")
+
+            logger.info("Location-based quantity OFR created successfully: {}", response.fulfillmentId)
+
+            ResponseEntity
+                .status(HttpStatus.CREATED)
+                .body(ApiResponse.success(response, "Outbound fulfillment request created successfully"))
+
+        } catch (e: IllegalArgumentException) {
+            logger.error("Validation error creating location-based quantity OFR", e)
+            ResponseEntity
+                .status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(e.message ?: "Validation error"))
+
+        } catch (e: IllegalStateException) {
+            logger.error("State error creating location-based quantity OFR", e)
+            ResponseEntity
+                .status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(e.message ?: "Conflict error"))
+
+        } catch (e: Exception) {
+            logger.error("Error creating location-based quantity OFR", e)
+            ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(e.message ?: "Internal server error"))
         }
     }
 }
