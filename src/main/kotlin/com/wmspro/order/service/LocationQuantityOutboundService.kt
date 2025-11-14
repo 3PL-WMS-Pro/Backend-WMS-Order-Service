@@ -527,7 +527,8 @@ class LocationQuantityOutboundService(
                     status = FulfillmentStatus.READY_TO_SHIP,
                     timestamp = now,
                     user = user,
-                    notes = "Location-based quantity picking completed"
+                    notes = "Location-based quantity picking completed",
+                    currentStatus = true
                 )
             )
         )
