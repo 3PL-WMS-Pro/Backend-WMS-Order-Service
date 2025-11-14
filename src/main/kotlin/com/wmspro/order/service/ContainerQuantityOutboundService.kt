@@ -24,9 +24,6 @@ import java.time.format.DateTimeFormatter
 @Transactional
 class ContainerQuantityOutboundService(
     private val orderFulfillmentRequestRepository: OrderFulfillmentRequestRepository,
-    private val quantityInventoryClient: QuantityInventoryClient,
-    private val quantityTransactionClient: QuantityTransactionClient,
-    private val barcodeReservationClient: BarcodeReservationClient,
     private val inventoryServiceClient: InventoryServiceClient,
     private val productServiceClient: ProductServiceClient,
     private val sequenceGeneratorService: SequenceGeneratorService,
@@ -178,7 +175,7 @@ class ContainerQuantityOutboundService(
 
         // Batch fetch all quantity inventories
         val batchRequest = BatchGetQuantityInventoryRequest(allQuantityInventoryIds)
-        val inventories = quantityInventoryClient.batchGetByIds(batchRequest).data
+        val inventories = inventoryServiceClient.batchGetByIds(batchRequest).data
             ?: throw IllegalArgumentException("Failed to fetch quantity inventories")
 
         val inventoryMap = inventories.associateBy { it.quantityInventoryId }
@@ -243,7 +240,7 @@ class ContainerQuantityOutboundService(
                     triggeredBy = user
                 )
 
-                val afterInventory = quantityInventoryClient.reduceQuantityForShipment(reduceRequest).data
+                val afterInventory = inventoryServiceClient.reduceQuantityForShipment(reduceRequest).data
                     ?: throw IllegalStateException("Failed to reduce inventory for ${source.quantityInventoryId}")
 
                 reductions.add(
@@ -270,7 +267,7 @@ class ContainerQuantityOutboundService(
     private fun consumePackageBarcodes(packageBarcodes: List<String>) {
         try {
             val batchRequest = BatchConsumePackageBarcodesRequest(packageBarcodes)
-            barcodeReservationClient.batchConsumePackageBarcodes(batchRequest)
+            inventoryServiceClient.batchConsumePackageBarcodes(batchRequest)
         } catch (e: Exception) {
             logger.error("Failed to consume package barcodes", e)
             throw IllegalStateException("Failed to consume package barcodes: ${e.message}", e)
@@ -299,7 +296,7 @@ class ContainerQuantityOutboundService(
                     user = user
                 )
 
-                val transaction = quantityTransactionClient.createShipmentTransaction(txnRequest).data
+                val transaction = inventoryServiceClient.createShipmentTransaction(txnRequest).data
                     ?: throw IllegalStateException("Failed to create transaction for ${reduction.quantityInventoryId}")
 
                 transactionIds.add(transaction.transactionId)

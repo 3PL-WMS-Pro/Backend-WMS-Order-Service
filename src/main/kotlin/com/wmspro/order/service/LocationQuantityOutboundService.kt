@@ -25,9 +25,7 @@ import java.time.format.DateTimeFormatter
 @Transactional
 class LocationQuantityOutboundService(
     private val orderFulfillmentRequestRepository: OrderFulfillmentRequestRepository,
-    private val quantityInventoryClient: QuantityInventoryClient,
-    private val quantityTransactionClient: QuantityTransactionClient,
-    private val barcodeReservationClient: BarcodeReservationClient,
+    private val inventoryServiceClient: InventoryServiceClient,
     private val sequenceGeneratorService: SequenceGeneratorService,
     private val orderFulfillmentService: OrderFulfillmentService
 ) {
@@ -185,7 +183,7 @@ class LocationQuantityOutboundService(
 
         // Batch fetch all quantity inventories
         val batchRequest = BatchGetQuantityInventoryRequest(allQuantityInventoryIds)
-        val inventories = quantityInventoryClient.batchGetByIds(batchRequest).data
+        val inventories = inventoryServiceClient.batchGetByIds(batchRequest).data
             ?: throw IllegalArgumentException("Failed to fetch quantity inventories")
 
         val inventoryMap = inventories.associateBy { it.quantityInventoryId }
@@ -266,7 +264,7 @@ class LocationQuantityOutboundService(
                 triggeredBy = user
             )
 
-            val response = quantityInventoryClient.reduceQuantityWithLocationUpdate(reduceRequest).data
+            val response = inventoryServiceClient.reduceQuantityWithLocationUpdate(reduceRequest).data
                 ?: throw IllegalStateException("Failed to reduce inventory for ${itemPicked.quantityInventoryId}")
 
             val afterInventory = response.quantityInventory
@@ -308,7 +306,7 @@ class LocationQuantityOutboundService(
     private fun consumePackageBarcodes(packageBarcodes: List<String>) {
         try {
             val batchRequest = BatchConsumePackageBarcodesRequest(packageBarcodes)
-            barcodeReservationClient.batchConsumePackageBarcodes(batchRequest)
+            inventoryServiceClient.batchConsumePackageBarcodes(batchRequest)
         } catch (e: Exception) {
             logger.error("Failed to consume package barcodes", e)
             throw IllegalStateException("Failed to consume package barcodes: ${e.message}", e)
@@ -355,7 +353,7 @@ class LocationQuantityOutboundService(
                     user = user
                 )
 
-                val transaction = quantityTransactionClient.createShipmentTransactionWithLocations(txnRequest).data
+                val transaction = inventoryServiceClient.createShipmentTransactionWithLocations(txnRequest).data
                     ?: throw IllegalStateException("Failed to create transaction for ${reduction.quantityInventoryId}")
 
                 transactionIds.add(transaction.transactionId)
