@@ -260,6 +260,7 @@ data class StorageItemBarcodeResponse(
 data class ReduceQuantityRequest(
     val quantityInventoryId: String,
     val quantityToShip: Int,
+    val locationCode: String,
     val triggeredBy: String
 )
 

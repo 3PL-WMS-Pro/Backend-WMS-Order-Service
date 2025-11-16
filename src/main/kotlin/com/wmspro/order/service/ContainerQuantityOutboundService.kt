@@ -237,6 +237,7 @@ class ContainerQuantityOutboundService(
                 val reduceRequest = ReduceQuantityRequest(
                     quantityInventoryId = source.quantityInventoryId,
                     quantityToShip = source.quantityPicked,
+                    locationCode = source.locationCode,
                     triggeredBy = user
                 )
 
