@@ -19,7 +19,8 @@ import java.time.LocalDateTime
 @Service
 @Transactional
 class OFRPackageMgmtService(
-    private val ofrRepository: OrderFulfillmentRequestRepository
+    private val ofrRepository: OrderFulfillmentRequestRepository,
+    private val inventoryServiceClient: com.wmspro.order.client.InventoryServiceClient
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -210,7 +211,7 @@ class OFRPackageMgmtService(
      * Creates package in OFR with full validation including barcode uniqueness,
      * item assignment prevention, and quantity validation
      */
-    fun createPackage(fulfillmentId: String, request: CreatePackageRequest): PackageResponse {
+    fun createPackage(fulfillmentId: String, request: CreatePackageRequest, authToken: String? = null): PackageResponse {
         logger.info("API 149: Creating new package for OFR: {}", fulfillmentId)
 
         // Step 1: Fetch OFR
@@ -267,6 +268,15 @@ class OFRPackageMgmtService(
         // Step 9: Save OFR
         ofrRepository.save(ofr)
         logger.info("Package created successfully: {}", packageId)
+
+        // Step 10: Consume package barcode
+        try {
+            consumePackageBarcode(newPackage.packageBarcode, authToken)
+        } catch (e: Exception) {
+            logger.error("Failed to consume package barcode: ${newPackage.packageBarcode}", e)
+            // We don't fail the package creation if barcode consumption fails
+            // This can be retried manually if needed
+        }
 
         return PackageResponse(
             packageId = newPackage.packageId,
@@ -525,6 +535,46 @@ class OFRPackageMgmtService(
                     "Quantity exceeds available for SKU $skuId. Available: ${lineItem.quantityPicked}, Already packaged: $alreadyPackaged, Requesting: $countToAdd"
                 )
             }
+        }
+    }
+
+    /**
+     * Consume package barcode by calling Inventory Service
+     * This marks the package barcode as consumed
+     */
+    private fun consumePackageBarcode(barcode: String?, authToken: String?) {
+        if (authToken == null || barcode == null) {
+            logger.warn("No auth token or barcode provided, cannot consume barcode")
+            return
+        }
+
+        logger.info("Consuming package barcode: {}", barcode)
+
+        // authToken and barcode are guaranteed non-null here after the check above
+        val token = authToken
+        val barcodeValue = barcode
+
+        try {
+            val request = com.wmspro.order.client.ConsumePackageBarcodesFromRequestRequest(listOf(barcodeValue))
+            val response = inventoryServiceClient.consumePackageBarcodesFromRequest(request, token)
+
+            if (response.success) {
+                logger.info("Successfully consumed package barcode: {}", barcode)
+                response.data?.let { data ->
+                    if (data.failed > 0) {
+                        logger.warn("Failed to consume package barcode: {}", barcode)
+                        data.results.filter { !it.success }.forEach { result ->
+                            logger.warn("Barcode {} consumption failed: {}", result.barcode, result.message)
+                        }
+                    }
+                }
+            } else {
+                logger.error("Inventory service returned error: {}", response.message)
+                throw RuntimeException("Failed to consume package barcode: ${response.message}")
+            }
+        } catch (e: Exception) {
+            logger.error("Error calling inventory service to consume package barcode: {}", barcode, e)
+            throw e
         }
     }
 }

@@ -791,12 +791,13 @@ class OrderFulfillmentController(
     @PostMapping("/{fulfillmentId}/packages")
     fun createPackage(
         @PathVariable fulfillmentId: String,
-        @Valid @RequestBody request: CreatePackageRequest
+        @Valid @RequestBody request: CreatePackageRequest,
+        @RequestHeader(value = "Authorization", required = false) authToken: String?
     ): ResponseEntity<ApiResponse<PackageResponse>> {
         logger.info("API 149: POST /api/v1/orders/fulfillment-requests/{}/packages", fulfillmentId)
 
         return try {
-            val packageResponse = ofrPackageMgmtService.createPackage(fulfillmentId, request)
+            val packageResponse = ofrPackageMgmtService.createPackage(fulfillmentId, request, authToken)
 
             ResponseEntity
                 .status(HttpStatus.CREATED)
@@ -920,7 +921,7 @@ class OrderFulfillmentController(
         }
 
         return try {
-            val response = containerQuantityOutboundService.createOFR(request, username ?: "SYSTEM")
+            val response = containerQuantityOutboundService.createOFR(request, username ?: "SYSTEM", authToken)
 
             logger.info("Container-based quantity OFR created successfully: {}", response.fulfillmentId)
 
@@ -974,7 +975,7 @@ class OrderFulfillmentController(
         }
 
         return try {
-            val response = locationQuantityOutboundService.createOFR(request, username ?: "SYSTEM")
+            val response = locationQuantityOutboundService.createOFR(request, username ?: "SYSTEM", authToken)
 
             logger.info("Location-based quantity OFR created successfully: {}", response.fulfillmentId)
 

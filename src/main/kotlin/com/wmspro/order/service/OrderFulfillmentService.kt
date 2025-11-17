@@ -1,5 +1,6 @@
 package com.wmspro.order.service
 
+import com.wmspro.order.client.ConsumePackageBarcodesFromRequestRequest
 import com.wmspro.order.client.InventoryServiceClient
 import com.wmspro.order.client.ProductServiceClient
 import com.wmspro.order.client.StorageItemIdsByBarcodesRequest
@@ -1369,7 +1370,17 @@ class OrderFulfillmentService(
         val savedOfr = ofrRepository.save(ofr)
         logger.info("Direct OFR created successfully: {} with GIN: {}", savedOfr.fulfillmentId, savedOfr.ginNumber)
 
-        // Step 11: Build and return response
+        // Step 11: Consume package barcodes
+        try {
+            val packageBarcodes = request.packages.map { it.packageBarcode }
+            consumePackageBarcodesForDirectOFR(packageBarcodes, authToken)
+            logger.info("Successfully consumed {} package barcodes for direct OFR", packageBarcodes.size)
+        } catch (e: Exception) {
+            logger.error("Failed to consume package barcodes for direct OFR: ${e.message}", e)
+            // Don't fail the OFR creation if barcode consumption fails
+        }
+
+        // Step 12: Build and return response
         return DirectOfrResponse(
             fulfillmentId = savedOfr.fulfillmentId,
             ginNumber = savedOfr.ginNumber!!,
@@ -1412,5 +1423,45 @@ class OrderFulfillmentService(
         }
 
         return attachments
+    }
+
+    /**
+     * Helper: Consume package barcodes for Direct OFR
+     * Marks package barcodes as CONSUMED in the Inventory Service
+     */
+    private fun consumePackageBarcodesForDirectOFR(packageBarcodes: List<String>, authToken: String?) {
+        if (packageBarcodes.isEmpty()) {
+            logger.debug("No package barcodes to consume")
+            return
+        }
+
+        if (authToken == null) {
+            logger.warn("No auth token provided, skipping package barcode consumption")
+            return
+        }
+
+        try {
+            // Use the new barcode generation request consumption API
+            val request = ConsumePackageBarcodesFromRequestRequest(packageBarcodes)
+            val response = inventoryServiceClient.consumePackageBarcodesFromRequest(request, authToken)
+
+            if (response.success) {
+                logger.info("Successfully consumed {} package barcodes", packageBarcodes.size)
+                response.data?.let { data ->
+                    if (data.failed > 0) {
+                        logger.warn("Failed to consume {} out of {} package barcodes", data.failed, data.totalRequested)
+                        data.results.filter { !it.success }.forEach { result ->
+                            logger.warn("Barcode {} consumption failed: {}", result.barcode, result.message)
+                        }
+                    }
+                }
+            } else {
+                logger.error("Inventory service returned error: {}", response.message)
+                throw IllegalStateException("Failed to consume package barcodes: ${response.message}")
+            }
+        } catch (e: Exception) {
+            logger.error("Failed to consume package barcodes", e)
+            throw IllegalStateException("Failed to consume package barcodes: ${e.message}", e)
+        }
     }
 }

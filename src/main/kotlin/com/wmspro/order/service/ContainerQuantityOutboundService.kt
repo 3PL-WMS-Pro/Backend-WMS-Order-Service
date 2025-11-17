@@ -46,7 +46,7 @@ class ContainerQuantityOutboundService(
      * 8. Save OrderFulfillmentRequest
      * 9. Build Response
      */
-    fun createOFR(request: CreateContainerQuantityBasedRequest, user: String): ContainerQuantityBasedOFRResponse {
+    fun createOFR(request: CreateContainerQuantityBasedRequest, user: String, authToken: String? = null): ContainerQuantityBasedOFRResponse {
         val tenantId = TenantContext.requireCurrentTenant()
 
         logger.info("Creating container-based quantity OFR for accountId=${request.accountId}, tenant=$tenantId")
@@ -65,7 +65,7 @@ class ContainerQuantityOutboundService(
 
         // STEP 4: Consume Package Barcodes
         logger.debug("Step 4: Consuming package barcodes")
-        consumePackageBarcodes(request.packages.map { it.packageBarcode })
+        consumePackageBarcodes(request.packages.map { it.packageBarcode }, authToken)
 
         // STEP 5: Generate IDs
         logger.debug("Step 5: Generating IDs")
@@ -265,10 +265,36 @@ class ContainerQuantityOutboundService(
      * STEP 4: Consume Package Barcodes
      * Marks package barcodes as CONSUMED
      */
-    private fun consumePackageBarcodes(packageBarcodes: List<String>) {
+    private fun consumePackageBarcodes(packageBarcodes: List<String>, authToken: String?) {
+        if (packageBarcodes.isEmpty()) {
+            logger.debug("No package barcodes to consume")
+            return
+        }
+
+        if (authToken == null) {
+            logger.warn("No auth token provided, skipping package barcode consumption")
+            return
+        }
+
         try {
-            val batchRequest = BatchConsumePackageBarcodesRequest(packageBarcodes)
-            inventoryServiceClient.batchConsumePackageBarcodes(batchRequest)
+            // Use the new barcode generation request consumption API
+            val request = ConsumePackageBarcodesFromRequestRequest(packageBarcodes)
+            val response = inventoryServiceClient.consumePackageBarcodesFromRequest(request, authToken)
+
+            if (response.success) {
+                logger.info("Successfully consumed {} package barcodes", packageBarcodes.size)
+                response.data?.let { data ->
+                    if (data.failed > 0) {
+                        logger.warn("Failed to consume {} out of {} package barcodes", data.failed, data.totalRequested)
+                        data.results.filter { !it.success }.forEach { result ->
+                            logger.warn("Barcode {} consumption failed: {}", result.barcode, result.message)
+                        }
+                    }
+                }
+            } else {
+                logger.error("Inventory service returned error: {}", response.message)
+                throw IllegalStateException("Failed to consume package barcodes: ${response.message}")
+            }
         } catch (e: Exception) {
             logger.error("Failed to consume package barcodes", e)
             throw IllegalStateException("Failed to consume package barcodes: ${e.message}", e)

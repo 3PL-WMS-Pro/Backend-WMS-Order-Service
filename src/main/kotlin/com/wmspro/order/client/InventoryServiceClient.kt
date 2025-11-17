@@ -132,6 +132,16 @@ interface InventoryServiceClient {
         @PathVariable barcode: String
     ): ApiResponse<BarcodeReservationResponse>
 
+    /**
+     * Consume package barcodes (New Barcode Generation Request API)
+     * POST /api/v1/barcode-requests/consume/packages
+     */
+    @PostMapping("/api/v1/barcode-requests/consume/packages")
+    fun consumePackageBarcodesFromRequest(
+        @RequestBody request: ConsumePackageBarcodesFromRequestRequest,
+        @RequestHeader("Authorization") authToken: String
+    ): ApiResponse<BarcodeConsumptionResponse>
+
     // ============================================
     // Quantity Transaction Endpoints
     // ============================================
@@ -391,4 +401,37 @@ data class QuantityTransactionResponse(
     val notes: String? = null,
     val reason: String? = null,
     val timestamp: String
+)
+
+// ============================================
+// Barcode Consumption DTOs (New API)
+// ============================================
+
+/**
+ * Request DTO for consuming package barcodes from barcode generation request
+ */
+data class ConsumePackageBarcodesFromRequestRequest(
+    val barcodes: List<String>
+)
+
+/**
+ * Response DTO for barcode consumption
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class BarcodeConsumptionResponse(
+    val totalRequested: Int,
+    val successfullyConsumed: Int,
+    val failed: Int,
+    val results: List<BarcodeConsumptionResult>
+)
+
+/**
+ * Individual barcode consumption result
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class BarcodeConsumptionResult(
+    val barcode: String,
+    val success: Boolean,
+    val message: String,
+    val consumedAt: String?
 )
