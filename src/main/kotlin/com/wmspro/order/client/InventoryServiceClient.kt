@@ -260,7 +260,9 @@ data class StorageItemBarcodeResponse(
     val widthCm: Double? = null,
     val heightCm: Double? = null,
     val volumeCbm: Double? = null,
-    val weightKg: Double? = null
+    val weightKg: Double? = null,
+    val parentItemId: Long? = null,
+    val parentItemBarcode: String? = null
 )
 
 // ============================================
