@@ -102,8 +102,9 @@ data class AddGinAttachmentRequest(
 
 /**
  * Request DTO for updating GIN date and signed GIN copy
+ * Both fields are optional - if null, the existing value in DB will be preserved
  */
 data class UpdateGinDetailsRequest(
-    val ginDate: LocalDateTime,
-    val signedGinCopy: String
+    val ginDate: LocalDateTime? = null,
+    val signedGinCopy: String? = null
 )

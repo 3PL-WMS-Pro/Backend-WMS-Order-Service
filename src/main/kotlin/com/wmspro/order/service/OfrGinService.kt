@@ -392,10 +392,12 @@ class OfrGinService(
     /**
      * Update GIN date and signed GIN copy
      * Updates the ginDate and signedGinCopy fields in the GinNotification
+     * If either field is null in the request, the existing value will be preserved
      */
     @Transactional
     fun updateGinDetails(fulfillmentId: String, request: UpdateGinDetailsRequest, authToken: String) {
-        logger.info("Updating GIN details for fulfillment request: {} - ginDate: {}", fulfillmentId, request.ginDate)
+        logger.info("Updating GIN details for fulfillment request: {} - ginDate: {}, signedGinCopy: {}",
+            fulfillmentId, request.ginDate, request.signedGinCopy)
 
         // Fetch OFR
         val ofr = ofrRepository.findById(fulfillmentId).orElse(null)
@@ -404,10 +406,10 @@ class OfrGinService(
         // Get or create GinNotification
         val currentGinNotification = ofr.ginNotification ?: GinNotification()
 
-        // Update GinNotification with new ginDate and signedGinCopy
+        // Update GinNotification with new values, preserving existing values if request fields are null
         val updatedGinNotification = currentGinNotification.copy(
-            ginDate = request.ginDate,
-            signedGINCopy = request.signedGinCopy
+            ginDate = request.ginDate ?: currentGinNotification.ginDate,
+            signedGINCopy = request.signedGinCopy ?: currentGinNotification.signedGINCopy
         )
 
         // Extract username for audit
