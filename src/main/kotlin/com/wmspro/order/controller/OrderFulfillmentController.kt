@@ -19,6 +19,7 @@ class OrderFulfillmentController(
     private val orderFulfillmentService: OrderFulfillmentService,
     private val orderFulfillmentDetailsService: com.wmspro.order.service.OrderFulfillmentDetailsService,
     private val ofrPackageMgmtService: com.wmspro.order.service.OFRPackageMgmtService,
+    private val ofrEnrichmentService: com.wmspro.order.service.OfrEnrichmentService,
     private val jwtTokenExtractor: JwtTokenExtractor,
     private val containerQuantityOutboundService: com.wmspro.order.service.ContainerQuantityOutboundService,
     private val locationQuantityOutboundService: com.wmspro.order.service.LocationQuantityOutboundService
@@ -165,6 +166,52 @@ class OrderFulfillmentController(
             ResponseEntity
                 .status(status)
                 .body(ApiResponse.error(e.message ?: "Failed to retrieve OFR"))
+        }
+    }
+
+    /**
+     * Get Comprehensive Enriched OFR with Full Data from Multiple Microservices
+     * Method: GET
+     * Endpoint: /api/v1/orders/fulfillment-requests/{fulfillmentId}/enriched
+     *
+     * Returns complete OFR details enriched with:
+     * - SKU details (skuCode, productTitle, images) from Product Service
+     * - Storage Item details (barcodes, dimensions, locations) from Inventory Service
+     * - Quantity Inventory details from Inventory Service
+     * - Account name from Account Service
+     * - User names from User Service
+     *
+     * NOTE: Does NOT include Task Service data as per requirement
+     */
+    @GetMapping("/{fulfillmentId}/enriched")
+    fun getEnrichedOfrById(
+        @PathVariable fulfillmentId: String,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<OfrEnrichedResponse>> {
+        logger.info("GET /api/v1/orders/fulfillment-requests/{}/enriched - Fetching comprehensive enriched OFR", fulfillmentId)
+
+        return try {
+            val authToken = httpRequest.getHeader("Authorization") ?: ""
+            val enrichedOfr = ofrEnrichmentService.getEnrichedOfrById(fulfillmentId, authToken)
+
+            ResponseEntity.ok(
+                ApiResponse.success(
+                    enrichedOfr,
+                    "Enriched OFR retrieved successfully with data from Product, Inventory, Account, and User services"
+                )
+            )
+
+        } catch (e: IllegalArgumentException) {
+            logger.error("OFR not found: {}", fulfillmentId, e)
+            ResponseEntity
+                .status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.error(e.message ?: "Order Fulfillment Request not found"))
+
+        } catch (e: Exception) {
+            logger.error("Error retrieving enriched OFR: {}", fulfillmentId, e)
+            ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(e.message ?: "Failed to retrieve enriched OFR"))
         }
     }
 
