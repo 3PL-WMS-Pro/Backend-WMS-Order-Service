@@ -365,4 +365,46 @@ class OfrGinController(
             )
         }
     }
+
+    /**
+     * Update GIN Date and Signed Copy
+     * PUT /api/v1/orders/gin/{fulfillmentId}/gin-details
+     *
+     * Updates the GIN date and signed GIN copy URL
+     */
+    @PutMapping("/{fulfillmentId}/gin-details")
+    fun updateGinDetails(
+        @PathVariable fulfillmentId: String,
+        @Valid @RequestBody request: UpdateGinDetailsRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<String>> {
+        logger.info("PUT /api/v1/orders/gin/{}/gin-details - Updating GIN date and signed copy", fulfillmentId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+
+        return try {
+            ofrGinService.updateGinDetails(fulfillmentId, request, authToken)
+
+            ResponseEntity.ok(
+                ApiResponse.success(
+                    "GIN details updated successfully",
+                    "GIN date and signed copy updated successfully"
+                )
+            )
+        } catch (e: IllegalArgumentException) {
+            logger.error("Order Fulfillment Request not found: $fulfillmentId", e)
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.error(
+                    e.message ?: "Order Fulfillment Request not found"
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error updating GIN details: $fulfillmentId", e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                ApiResponse.error(
+                    "Internal server error: ${e.message}"
+                )
+            )
+        }
+    }
 }

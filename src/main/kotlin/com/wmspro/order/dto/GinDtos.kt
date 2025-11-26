@@ -99,3 +99,11 @@ data class AddGinAttachmentRequest(
     val fileName: String,
     val fileUrl: String
 )
+
+/**
+ * Request DTO for updating GIN date and signed GIN copy
+ */
+data class UpdateGinDetailsRequest(
+    val ginDate: LocalDateTime,
+    val signedGinCopy: String
+)

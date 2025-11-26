@@ -388,4 +388,39 @@ class OfrGinService(
         ofrRepository.save(updatedOFR)
         logger.info("GIN attachment added/updated successfully for fulfillment request: {}", fulfillmentId)
     }
+
+    /**
+     * Update GIN date and signed GIN copy
+     * Updates the ginDate and signedGinCopy fields in the GinNotification
+     */
+    @Transactional
+    fun updateGinDetails(fulfillmentId: String, request: UpdateGinDetailsRequest, authToken: String) {
+        logger.info("Updating GIN details for fulfillment request: {} - ginDate: {}", fulfillmentId, request.ginDate)
+
+        // Fetch OFR
+        val ofr = ofrRepository.findById(fulfillmentId).orElse(null)
+            ?: throw IllegalArgumentException("Order Fulfillment Request not found: $fulfillmentId")
+
+        // Get or create GinNotification
+        val currentGinNotification = ofr.ginNotification ?: GinNotification()
+
+        // Update GinNotification with new ginDate and signedGinCopy
+        val updatedGinNotification = currentGinNotification.copy(
+            ginDate = request.ginDate,
+            signedGINCopy = request.signedGinCopy
+        )
+
+        // Extract username for audit
+        val username = jwtTokenExtractor.extractUsername(authToken)
+
+        // Update OFR
+        val updatedOFR = ofr.copy(
+            ginNotification = updatedGinNotification,
+            updatedBy = username,
+            updatedAt = LocalDateTime.now()
+        )
+
+        ofrRepository.save(updatedOFR)
+        logger.info("GIN details updated successfully for fulfillment request: {}", fulfillmentId)
+    }
 }

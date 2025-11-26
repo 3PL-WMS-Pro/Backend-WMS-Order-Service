@@ -239,6 +239,9 @@ data class GinNotification(
     val subject: String? = null,               // Email subject line
     val emailContent: String? = null,          // Email body content
 
+    // Signed GIN Copy
+    val signedGINCopy: String? = null,         // URL/path to signed GIN document
+
     // Attachments
     val attachments: MutableList<GinAttachment> = mutableListOf()  // GIN attachments (PDF, signed docs, etc.)
 ) {
