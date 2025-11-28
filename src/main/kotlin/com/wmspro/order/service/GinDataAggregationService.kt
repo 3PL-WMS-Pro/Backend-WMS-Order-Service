@@ -57,11 +57,17 @@ class GinDataAggregationService(
             "Customer ${ofr.accountId}"
         }
 
-        // 4. Fetch dimensions for all allocated items
+        // 4. Fetch dimensions for all allocated items (STANDARD_TASK_BASED)
         val allStorageItemIds = ofr.lineItems.flatMap { lineItem ->
             lineItem.allocatedItems.map { it.storageItemId }
         }
         val itemDimensionsByStorageId = fetchItemDimensions(allStorageItemIds)
+
+        // 4b. Fetch QBI details for quantity-based fulfillment (LOCATION/CONTAINER_QUANTITY_BASED)
+        val allQbiIds = ofr.lineItems.flatMap { lineItem ->
+            lineItem.quantityInventoryReferences.map { it.quantityInventoryId }
+        }.distinct()
+        val qbiDetailsMap = if (allQbiIds.isNotEmpty()) fetchQbiDetails(allQbiIds) else emptyMap()
 
         // 5. Fetch SKU details for all SKU items in batch
         val allSkuIds = ofr.lineItems
@@ -71,7 +77,7 @@ class GinDataAggregationService(
         val skuDetailsMap = fetchSkuDetailsInBatch(allSkuIds)
 
         // 6. Process line items for GIN
-        val ginItems = processLineItemsForGin(ofr, skuDetailsMap, itemDimensionsByStorageId)
+        val ginItems = processLineItemsForGin(ofr, skuDetailsMap, itemDimensionsByStorageId, qbiDetailsMap)
 
         // 7. Calculate totals
         val totalOrdered = ginItems.sumOf { it.quantityOrdered }
@@ -141,7 +147,8 @@ class GinDataAggregationService(
     private fun processLineItemsForGin(
         ofr: OrderFulfillmentRequest,
         skuDetailsMap: Map<Long, Map<String, Any>>,
-        itemDimensionsByStorageId: Map<Long, StorageItemBarcodeResponse>
+        itemDimensionsByStorageId: Map<Long, StorageItemBarcodeResponse>,
+        qbiDetailsMap: Map<String, QuantityInventoryResponse>
     ): List<GinItemDto> {
         logger.debug("Processing {} line items for GIN", ofr.lineItems.size)
 
@@ -157,17 +164,33 @@ class GinDataAggregationService(
                     itemCode = skuDetails?.get("skuCode") as? String ?: "SKU-$skuId"
                     description = skuDetails?.get("productTitle") as? String ?: "Unknown Product"
 
-                    // Get dimensions from first allocated item
+                    // Get dimensions from first allocated item OR from QBI
                     val firstStorageItemId = lineItem.allocatedItems.firstOrNull()?.storageItemId
-                    dimensions = if (firstStorageItemId != null) itemDimensionsByStorageId[firstStorageItemId] else null
+                    dimensions = if (firstStorageItemId != null) {
+                        itemDimensionsByStorageId[firstStorageItemId]
+                    } else {
+                        // Try to get from QBI for LOCATION/CONTAINER_QUANTITY_BASED
+                        // Find first QBI that has dimensions (not just the first QBI)
+                        lineItem.quantityInventoryReferences
+                            .mapNotNull { ref -> getDimensionsFromQbi(qbiDetailsMap[ref.quantityInventoryId]) }
+                            .firstOrNull()
+                    }
                 }
                 ItemType.BOX, ItemType.PALLET -> {
                     itemCode = lineItem.itemBarcode ?: "UNKNOWN"
                     description = lineItem.itemType.name
 
-                    // Get dimensions from allocated item
+                    // Get dimensions from allocated item OR from QBI
                     val firstStorageItemId = lineItem.allocatedItems.firstOrNull()?.storageItemId
-                    dimensions = if (firstStorageItemId != null) itemDimensionsByStorageId[firstStorageItemId] else null
+                    dimensions = if (firstStorageItemId != null) {
+                        itemDimensionsByStorageId[firstStorageItemId]
+                    } else {
+                        // Try to get from QBI for LOCATION/CONTAINER_QUANTITY_BASED
+                        // Find first QBI that has dimensions (not just the first QBI)
+                        lineItem.quantityInventoryReferences
+                            .mapNotNull { ref -> getDimensionsFromQbi(qbiDetailsMap[ref.quantityInventoryId]) }
+                            .firstOrNull()
+                    }
                 }
             }
 
@@ -277,5 +300,50 @@ class GinDataAggregationService(
         } else {
             null
         }
+    }
+
+    /**
+     * Fetch QBI details from Inventory Service in batch
+     */
+    private fun fetchQbiDetails(qbiIds: List<String>): Map<String, QuantityInventoryResponse> {
+        if (qbiIds.isEmpty()) return emptyMap()
+
+        return try {
+            val response = inventoryServiceClient.batchGetByIds(
+                BatchGetQuantityInventoryRequest(qbiIds)
+            )
+            val data = response.data
+            if (response.success && data != null) {
+                data.associateBy { it.quantityInventoryId }
+            } else {
+                logger.warn("Failed to fetch QBI details from inventory service")
+                emptyMap()
+            }
+        } catch (e: Exception) {
+            logger.error("Error fetching QBI details", e)
+            emptyMap()
+        }
+    }
+
+    /**
+     * Convert QBI dimensions to StorageItemBarcodeResponse format
+     */
+    private fun getDimensionsFromQbi(qbi: QuantityInventoryResponse?): StorageItemBarcodeResponse? {
+        if (qbi == null || qbi.dimensions == null) return null
+
+        val dims = qbi.dimensions
+        return StorageItemBarcodeResponse(
+            storageItemId = 0L, // Not applicable for QBI
+            itemBarcode = qbi.quantityInventoryId,
+            itemType = qbi.itemType,
+            skuId = qbi.skuId,
+            lengthCm = dims.lengthCm,
+            widthCm = dims.widthCm,
+            heightCm = dims.heightCm,
+            volumeCbm = dims.cbm,
+            weightKg = dims.weightGrams?.let { it / 1000.0 }, // Convert grams to kg
+            parentItemId = null,
+            parentItemBarcode = null
+        )
     }
 }

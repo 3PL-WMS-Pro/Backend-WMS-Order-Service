@@ -300,6 +300,7 @@ data class QuantityInventoryResponse(
     val itemType: String,
     val skuId: Long? = null,
     val skuInfo: SkuInfo? = null,
+    val dimensions: ItemDimensionsDto? = null,
     val totalQuantity: Int,
     val availableQuantity: Int,
     val reservedQuantity: Int,
@@ -436,4 +437,16 @@ data class BarcodeConsumptionResult(
     val success: Boolean,
     val message: String,
     val consumedAt: String?
+)
+
+/**
+ * Item dimensions DTO for QBI items
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class ItemDimensionsDto(
+    val lengthCm: Double? = null,
+    val widthCm: Double? = null,
+    val heightCm: Double? = null,
+    val weightGrams: Double? = null,
+    val cbm: Double? = null
 )
