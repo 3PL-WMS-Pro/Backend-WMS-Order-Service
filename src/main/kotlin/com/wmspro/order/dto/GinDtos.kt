@@ -14,6 +14,7 @@ data class GinDataDto(
     val ginNumber: String, // GIN-001
     val fulfillmentRequestId: String, // OFR-001
     val externalOrderNumber: String? = null, // Client's order number
+    val clientReferenceNum: String? = null, // Client's reference number
     val customerRef: String? = null,
     val warehouseRef: String? = null,
     val dateIssued: LocalDateTime,

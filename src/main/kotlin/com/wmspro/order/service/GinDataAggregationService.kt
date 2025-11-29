@@ -119,6 +119,7 @@ class GinDataAggregationService(
             ginNumber = ofr.ginNumber ?: "N/A",
             fulfillmentRequestId = ofr.fulfillmentId,
             externalOrderNumber = ofr.externalOrderNumber,
+            clientReferenceNum = ofr.clientReferenceNum,
             dateIssued = ofr.fulfillmentRequestDate,
             transactionDate = ofr.updatedAt,
             status = currentStatus,
