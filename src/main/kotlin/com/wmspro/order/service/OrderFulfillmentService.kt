@@ -1466,4 +1466,30 @@ class OrderFulfillmentService(
             throw IllegalStateException("Failed to consume package barcodes: ${e.message}", e)
         }
     }
+
+    /**
+     * Batch fetch GIN numbers for multiple fulfillment IDs
+     * Used by Inventory Service for Stock Movement Reports
+     */
+    fun batchGetGinNumbers(fulfillmentIds: List<String>): Map<String, String?> {
+        logger.debug("Batch fetching GIN numbers for {} fulfillment IDs", fulfillmentIds.size)
+
+        if (fulfillmentIds.isEmpty()) {
+            return emptyMap()
+        }
+
+        return try {
+            val ofrs = ofrRepository.findAllById(fulfillmentIds)
+            val ginMap = ofrs.associate { it.fulfillmentId to it.ginNumber }
+
+            logger.debug("Found {} OFRs out of {} requested", ofrs.size, fulfillmentIds.size)
+
+            // Fill in null for missing OFRs
+            fulfillmentIds.associateWith { ginMap[it] }
+
+        } catch (e: Exception) {
+            logger.error("Error batch fetching GIN numbers", e)
+            throw IllegalStateException("Failed to fetch GIN numbers: ${e.message}", e)
+        }
+    }
 }

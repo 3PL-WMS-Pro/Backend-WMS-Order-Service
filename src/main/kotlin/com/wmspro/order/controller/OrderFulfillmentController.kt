@@ -1049,4 +1049,45 @@ class OrderFulfillmentController(
                 .body(ApiResponse.error(e.message ?: "Internal server error"))
         }
     }
+
+    /**
+     * Batch Get GIN Numbers by Fulfillment IDs
+     * Method: POST
+     * Endpoint: /api/v1/orders/fulfillment-requests/batch-gin
+     *
+     * Used by Inventory Service for Stock Movement Reports to fetch GIN numbers
+     */
+    @PostMapping("/batch-gin")
+    fun batchGetGinNumbers(
+        @RequestBody request: BatchGinRequest
+    ): ResponseEntity<ApiResponse<BatchGinResponse>> {
+        logger.info("POST /batch-gin - Fetching GIN numbers for {} fulfillment IDs", request.fulfillmentIds.size)
+
+        return try {
+            val ginMap = orderFulfillmentService.batchGetGinNumbers(request.fulfillmentIds)
+            val response = BatchGinResponse(ginMap = ginMap)
+
+            ResponseEntity.ok(ApiResponse.success(response, "GIN numbers fetched successfully"))
+
+        } catch (e: Exception) {
+            logger.error("Error fetching GIN numbers in batch", e)
+            ResponseEntity
+                .status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error(e.message ?: "Failed to fetch GIN numbers"))
+        }
+    }
 }
+
+/**
+ * Request DTO for batch fetching GIN numbers
+ */
+data class BatchGinRequest(
+    val fulfillmentIds: List<String>
+)
+
+/**
+ * Response DTO for batch GIN fetch
+ */
+data class BatchGinResponse(
+    val ginMap: Map<String, String?> // Key: fulfillmentId, Value: ginNumber (null if not generated)
+)
