@@ -46,8 +46,8 @@ data class CreateContainerQuantityBasedRequest(
     val shippingDetails: ShippingDetailsDto,
 
     val notes: String? = null,
-    val tags: List<String> = listOf(),
-    val customFields: Map<String, String> = mapOf(),
+    val tags: List<String>? = null,
+    val customFields: Map<String, String>? = null,
     val clientReferenceNum: String? = null
 )
 
@@ -170,8 +170,8 @@ data class CreateLocationQuantityBasedRequest(
     val shippingDetails: ShippingDetailsDto,
 
     val notes: String? = null,
-    val tags: List<String> = listOf(),
-    val customFields: Map<String, String> = mapOf(),
+    val tags: List<String>? = null,
+    val customFields: Map<String, String>? = null,
     val clientReferenceNum: String? = null
 )
 
