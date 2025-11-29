@@ -182,11 +182,10 @@ class GinDataAggregationService(
                     val firstQbiRef = lineItem.quantityInventoryReferences.firstOrNull()
                     val qbiDetails = firstQbiRef?.let { qbiDetailsMap[it.quantityInventoryId] }
 
-                    // Item code: prioritize parentContainerBarcode, fallback to quantityInventoryId or itemBarcode
+                    // Item code: show parentContainerBarcode or N/A (don't show QBI ID)
                     itemCode = qbiDetails?.parentContainerBarcode
-                        ?: qbiDetails?.quantityInventoryId
                         ?: lineItem.itemBarcode
-                        ?: "UNKNOWN"
+                        ?: "N/A"
 
                     // Description: use QBI description if available, otherwise fallback to item type
                     description = qbiDetails?.description
