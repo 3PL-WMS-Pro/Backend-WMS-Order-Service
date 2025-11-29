@@ -178,8 +178,19 @@ class GinDataAggregationService(
                     }
                 }
                 ItemType.BOX, ItemType.PALLET -> {
-                    itemCode = lineItem.itemBarcode ?: "UNKNOWN"
-                    description = lineItem.itemType.name
+                    // For quantity-based items, get item code and description from QBI
+                    val firstQbiRef = lineItem.quantityInventoryReferences.firstOrNull()
+                    val qbiDetails = firstQbiRef?.let { qbiDetailsMap[it.quantityInventoryId] }
+
+                    // Item code: prioritize parentContainerBarcode, fallback to quantityInventoryId or itemBarcode
+                    itemCode = qbiDetails?.parentContainerBarcode
+                        ?: qbiDetails?.quantityInventoryId
+                        ?: lineItem.itemBarcode
+                        ?: "UNKNOWN"
+
+                    // Description: use QBI description if available, otherwise fallback to item type
+                    description = qbiDetails?.description
+                        ?: lineItem.itemType.name
 
                     // Get dimensions from allocated item OR from QBI
                     val firstStorageItemId = lineItem.allocatedItems.firstOrNull()?.storageItemId
