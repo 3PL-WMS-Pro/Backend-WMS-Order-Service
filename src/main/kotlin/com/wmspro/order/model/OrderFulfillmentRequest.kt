@@ -19,6 +19,7 @@ data class OrderFulfillmentRequest(
     @Indexed
     val externalOrderId: String? = null,  // Client's original order ID
     val externalOrderNumber: String? = null,  // Client's order number
+    val clientReferenceNum: String? = null,  // Client's reference number (optional)
 
     var fulfillmentStatus: FulfillmentStatus = FulfillmentStatus.RECEIVED,
     val priority: Priority = Priority.STANDARD,

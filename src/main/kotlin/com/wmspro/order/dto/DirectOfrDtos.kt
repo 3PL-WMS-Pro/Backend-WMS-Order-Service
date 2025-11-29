@@ -48,7 +48,8 @@ data class CreateDirectOfrRequest(
     val priority: Priority = Priority.STANDARD,
     val notes: String? = null,
     val externalOrderId: String? = null,
-    val externalOrderNumber: String? = null
+    val externalOrderNumber: String? = null,
+    val clientReferenceNum: String? = null
 )
 
 data class DirectShippingDetailsDto(

@@ -18,6 +18,7 @@ data class CreateOfrRequest(
 
     val externalOrderId: String? = null,
     val externalOrderNumber: String? = null,
+    val clientReferenceNum: String? = null,
 
     @field:NotNull(message = "Customer info is required")
     val customerInfo: CustomerInfoDto,
@@ -105,6 +106,7 @@ data class OfrResponse(
     val fulfillmentSource: FulfillmentSource,
     val externalOrderId: String?,
     val externalOrderNumber: String?,
+    val clientReferenceNum: String?,
     val fulfillmentStatus: FulfillmentStatus,
     val priority: Priority,
     val executionApproach: ExecutionApproach,
@@ -141,6 +143,7 @@ data class OfrResponse(
                 fulfillmentSource = ofr.fulfillmentSource,
                 externalOrderId = ofr.externalOrderId,
                 externalOrderNumber = ofr.externalOrderNumber,
+                clientReferenceNum = ofr.clientReferenceNum,
                 fulfillmentStatus = ofr.fulfillmentStatus,
                 priority = ofr.priority,
                 executionApproach = ofr.executionApproach,

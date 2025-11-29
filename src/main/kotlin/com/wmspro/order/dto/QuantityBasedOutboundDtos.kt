@@ -47,7 +47,8 @@ data class CreateContainerQuantityBasedRequest(
 
     val notes: String? = null,
     val tags: List<String> = listOf(),
-    val customFields: Map<String, String> = mapOf()
+    val customFields: Map<String, String> = mapOf(),
+    val clientReferenceNum: String? = null
 )
 
 /**
@@ -170,7 +171,8 @@ data class CreateLocationQuantityBasedRequest(
 
     val notes: String? = null,
     val tags: List<String> = listOf(),
-    val customFields: Map<String, String> = mapOf()
+    val customFields: Map<String, String> = mapOf(),
+    val clientReferenceNum: String? = null
 )
 
 /**

@@ -509,6 +509,7 @@ class LocationQuantityOutboundService(
         return OrderFulfillmentRequest(
             fulfillmentId = fulfillmentId,
             accountId = request.accountId,
+            clientReferenceNum = request.clientReferenceNum,
             fulfillmentType = FulfillmentType.LOCATION_QUANTITY_BASED,
             fulfillmentSource = FulfillmentSource.WEB_PORTAL,
             executionApproach = ExecutionApproach.DIRECT_PROCESSING,
