@@ -261,6 +261,53 @@ class OfrGinService(
     }
 
     /**
+     * Helper: Get GIN PDF bytes - uses signed copy if available, otherwise generates PDF
+     *
+     * @param ofr The order fulfillment request
+     * @param authToken Authentication token for PDF generation
+     * @return PDF bytes (either from signed copy URL or freshly generated)
+     */
+    private fun getGinPdfBytes(ofr: OrderFulfillmentRequest, authToken: String): ByteArray {
+        val signedGinCopyUrl = ofr.ginNotification?.signedGINCopy
+
+        return if (!signedGinCopyUrl.isNullOrBlank()) {
+            logger.info("Using signed GIN copy from URL: {} for fulfillment: {}", signedGinCopyUrl, ofr.fulfillmentId)
+            try {
+                downloadFileFromUrl(signedGinCopyUrl)
+            } catch (e: Exception) {
+                logger.warn("Failed to download signed GIN copy from URL: {}, falling back to generated PDF. Error: {}",
+                    signedGinCopyUrl, e.message)
+                generateGinPdf(ofr.fulfillmentId, authToken)
+            }
+        } else {
+            logger.info("No signed GIN copy available, generating PDF for fulfillment: {}", ofr.fulfillmentId)
+            generateGinPdf(ofr.fulfillmentId, authToken)
+        }
+    }
+
+    /**
+     * Helper: Download file from URL
+     *
+     * @param url The URL to download from
+     * @return File contents as byte array
+     */
+    private fun downloadFileFromUrl(url: String): ByteArray {
+        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+        connection.requestMethod = "GET"
+        connection.connectTimeout = 30000
+        connection.readTimeout = 30000
+
+        try {
+            if (connection.responseCode != 200) {
+                throw RuntimeException("Failed to download file from URL: $url, response code: ${connection.responseCode}")
+            }
+            return connection.inputStream.use { it.readBytes() }
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /**
      * Helper: Calculate total weight in kg from packages
      * Handles weight unit conversion (kg, g, lb)
      */
@@ -299,6 +346,20 @@ class OfrGinService(
     }
 
     /**
+     * Get GIN PDF for preview - uses signed copy if available, otherwise generates PDF
+     * This is used by the preview API to show the appropriate PDF
+     */
+    fun previewGinPdf(fulfillmentId: String, authToken: String): ByteArray {
+        logger.info("Getting GIN PDF for preview - fulfillment request: {}", fulfillmentId)
+
+        // Fetch OFR to check for signed GIN copy
+        val ofr = ofrRepository.findById(fulfillmentId).orElse(null)
+            ?: throw IllegalArgumentException("Order Fulfillment Request not found: $fulfillmentId")
+
+        return getGinPdfBytes(ofr, authToken)
+    }
+
+    /**
      * Get default GIN email template content
      */
     fun getDefaultGinEmailTemplate(fulfillmentId: String, authToken: String): GinEmailTemplateResponse {
@@ -316,19 +377,20 @@ class OfrGinService(
 
     /**
      * Send GIN email with PDF attachment
+     * Uses signed GIN copy if available, otherwise generates PDF
      */
     @Transactional
     fun sendGinEmail(fulfillmentId: String, request: SendGinRequest, authToken: String) {
         logger.info("Sending GIN email for fulfillment request: {}", fulfillmentId)
 
-        // 1. Generate PDF
-        val pdfBytes = generateGinPdf(fulfillmentId, authToken)
-
-        // 2. Fetch OFR
+        // 1. Fetch OFR first to check for signed GIN copy
         val ofr = ofrRepository.findById(fulfillmentId).orElse(null)
             ?: throw IllegalArgumentException("Order Fulfillment Request not found: $fulfillmentId")
 
         val ginNumber = ofr.ginNumber ?: fulfillmentId
+
+        // 2. Get PDF bytes - use signed copy if available, otherwise generate
+        val pdfBytes = getGinPdfBytes(ofr, authToken)
 
         // 3. Send email
         ginEmailService.sendGinEmail(request, pdfBytes, ginNumber)

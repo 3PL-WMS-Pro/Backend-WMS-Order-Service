@@ -175,7 +175,7 @@ class OfrGinController(
      * Preview GIN PDF
      * GET /api/v1/orders/gin/{fulfillmentId}/preview
      *
-     * Generates and returns GIN PDF for preview in browser without sending email
+     * Returns signed GIN copy if available, otherwise generates GIN PDF for preview
      */
     @GetMapping("/{fulfillmentId}/preview")
     fun previewGin(
@@ -187,7 +187,7 @@ class OfrGinController(
         val authToken = httpRequest.getHeader("Authorization") ?: ""
 
         return try {
-            val pdfBytes = ofrGinService.generateGinPdf(fulfillmentId, authToken)
+            val pdfBytes = ofrGinService.previewGinPdf(fulfillmentId, authToken)
 
             ResponseEntity.ok()
                 .header("Content-Type", "application/pdf")
