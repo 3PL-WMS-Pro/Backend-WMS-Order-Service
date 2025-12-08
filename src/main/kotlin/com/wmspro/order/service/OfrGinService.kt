@@ -367,7 +367,7 @@ class OfrGinService(
         val filename = if (!signedGinCopyUrl.isNullOrBlank()) {
             extractFilenameFromUrl(signedGinCopyUrl)
         } else {
-            "GIN_${ginNumber}.pdf"
+            "${ginNumber}.pdf"
         }
 
         return Pair(pdfBytes, filename)
