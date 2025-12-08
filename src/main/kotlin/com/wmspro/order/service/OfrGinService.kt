@@ -348,15 +348,43 @@ class OfrGinService(
     /**
      * Get GIN PDF for preview - uses signed copy if available, otherwise generates PDF
      * This is used by the preview API to show the appropriate PDF
+     *
+     * @return Pair of (pdfBytes, filename)
      */
-    fun previewGinPdf(fulfillmentId: String, authToken: String): ByteArray {
+    fun previewGinPdf(fulfillmentId: String, authToken: String): Pair<ByteArray, String> {
         logger.info("Getting GIN PDF for preview - fulfillment request: {}", fulfillmentId)
 
         // Fetch OFR to check for signed GIN copy
         val ofr = ofrRepository.findById(fulfillmentId).orElse(null)
             ?: throw IllegalArgumentException("Order Fulfillment Request not found: $fulfillmentId")
 
-        return getGinPdfBytes(ofr, authToken)
+        val ginNumber = ofr.ginNumber ?: fulfillmentId
+        val signedGinCopyUrl = ofr.ginNotification?.signedGINCopy
+
+        val pdfBytes = getGinPdfBytes(ofr, authToken)
+
+        // Determine filename - extract from signed copy URL if available, otherwise use GIN number
+        val filename = if (!signedGinCopyUrl.isNullOrBlank()) {
+            extractFilenameFromUrl(signedGinCopyUrl)
+        } else {
+            "GIN_${ginNumber}.pdf"
+        }
+
+        return Pair(pdfBytes, filename)
+    }
+
+    /**
+     * Helper: Extract filename from URL
+     */
+    private fun extractFilenameFromUrl(url: String): String {
+        return try {
+            val path = java.net.URL(url).path
+            val filename = path.substringAfterLast("/")
+            if (filename.isNotBlank()) filename else "GIN.pdf"
+        } catch (e: Exception) {
+            logger.warn("Failed to extract filename from URL: {}, using default", url)
+            "GIN.pdf"
+        }
     }
 
     /**

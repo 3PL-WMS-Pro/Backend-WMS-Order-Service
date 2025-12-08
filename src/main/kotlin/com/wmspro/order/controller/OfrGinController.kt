@@ -187,11 +187,11 @@ class OfrGinController(
         val authToken = httpRequest.getHeader("Authorization") ?: ""
 
         return try {
-            val pdfBytes = ofrGinService.previewGinPdf(fulfillmentId, authToken)
+            val (pdfBytes, filename) = ofrGinService.previewGinPdf(fulfillmentId, authToken)
 
             ResponseEntity.ok()
                 .header("Content-Type", "application/pdf")
-                .header("Content-Disposition", "inline; filename=\"GIN_$fulfillmentId.pdf\"")
+                .header("Content-Disposition", "inline; filename=\"$filename\"")
                 .body(pdfBytes)
         } catch (e: IllegalArgumentException) {
             logger.error("Order Fulfillment Request not found: $fulfillmentId", e)
