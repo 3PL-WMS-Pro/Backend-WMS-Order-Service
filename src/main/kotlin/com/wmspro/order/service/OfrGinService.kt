@@ -363,28 +363,14 @@ class OfrGinService(
 
         val pdfBytes = getGinPdfBytes(ofr, authToken)
 
-        // Determine filename - extract from signed copy URL if available, otherwise use GIN number
+        // Determine filename - use GIN number with SIGNED suffix if signed copy, otherwise just GIN number
         val filename = if (!signedGinCopyUrl.isNullOrBlank()) {
-            extractFilenameFromUrl(signedGinCopyUrl)
+            "${ginNumber}-SIGNED.pdf"
         } else {
             "${ginNumber}.pdf"
         }
 
         return Pair(pdfBytes, filename)
-    }
-
-    /**
-     * Helper: Extract filename from URL
-     */
-    private fun extractFilenameFromUrl(url: String): String {
-        return try {
-            val path = java.net.URL(url).path
-            val filename = path.substringAfterLast("/")
-            if (filename.isNotBlank()) filename else "GIN.pdf"
-        } catch (e: Exception) {
-            logger.warn("Failed to extract filename from URL: {}, using default", url)
-            "GIN.pdf"
-        }
     }
 
     /**
