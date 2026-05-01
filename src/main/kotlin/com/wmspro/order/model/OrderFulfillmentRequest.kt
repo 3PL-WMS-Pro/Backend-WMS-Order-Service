@@ -83,6 +83,37 @@ data class OrderFulfillmentRequest(
     val cancelledAt: LocalDateTime? = null,
     val cancellationReason: String? = null,
 
+    /**
+     * Project tag — references a `projectCode` on the customer's
+     * CustomerBillingProfile.projects[]. Used by the WMS billing engine
+     * to attribute outbound movement charges (CBM shipped via this GIN
+     * × project's outbound rate). Optional; null = "unprojected", billed
+     * at the customer-level default outbound rate.
+     *
+     * Editable post-creation via PUT /api/v1/orders/{id}/project-code.
+     * Locked from edits while billingInvoiceId is set.
+     *
+     * NOTE: Outbound has no cascade — storage items being shipped already
+     * carry their own projectCode (set when received via the inbound RR).
+     * The GIN's projectCode tags the *shipment* for outbound-movement
+     * billing; it doesn't override the storage tags.
+     *
+     * See WMS-INVOICING-INTEGRATION.md §3.2 and §5 Phase 3.
+     */
+    @Indexed
+    val projectCode: String? = null,
+
+    /**
+     * Set by the billing engine when this fulfillment is included in a
+     * SUBMITTED billing run. Prevents projectCode edits and re-billing.
+     * Cleared when the billing run is CANCELLED.
+     */
+    @Indexed
+    val billingInvoiceId: String? = null,
+
+    /** Billing month covering this GIN's outbound movement charge, e.g. "2026-04". */
+    val billingMonth: String? = null,
+
     val createdBy: String? = null,
     val updatedBy: String? = null,
 

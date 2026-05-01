@@ -27,7 +27,33 @@ interface TenantServiceClient {
         @PathVariable clientId: Int,
         @RequestParam(required = false, defaultValue = "false") includeSettings: Boolean
     ): ApiResponse<TenantInfoResponse>
+
+    /**
+     * Audit fix (Finding 9): used by OrderFulfillmentBillingService.updateProjectCode
+     * to verify the new projectCode actually exists in the GIN's customer's
+     * BillingProfile before applying.
+     */
+    @GetMapping("/api/v1/billing-profiles/{customerId}")
+    fun getBillingProfile(
+        @PathVariable customerId: Long
+    ): ApiResponse<BillingProfileLite>
 }
+
+/**
+ * Subset of CustomerBillingProfile for projectCode validation. Other fields
+ * are ignored at deserialisation.
+ */
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class BillingProfileLite(
+    val customerId: Long,
+    val projects: List<BillingProjectLite> = emptyList()
+)
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class BillingProjectLite(
+    val projectCode: String,
+    val isActive: Boolean = true
+)
 
 /**
  * Document Template Response
