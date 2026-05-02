@@ -16,6 +16,8 @@ data class CreateDirectOfrRequest(
     @field:NotNull(message = "Account ID is required")
     val accountId: Long,
 
+    val projectCode: String? = null,  // Optional billing project tag (null = unprojected)
+
     // Step 1: Basic Details
     @field:NotNull(message = "Customer info is required")
     val customerInfo: CustomerInfoDto,

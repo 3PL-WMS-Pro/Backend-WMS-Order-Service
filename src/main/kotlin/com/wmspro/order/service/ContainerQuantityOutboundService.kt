@@ -442,6 +442,7 @@ class ContainerQuantityOutboundService(
         return OrderFulfillmentRequest(
             fulfillmentId = fulfillmentId,
             accountId = request.accountId,
+            projectCode = request.projectCode,
             clientReferenceNum = request.clientReferenceNum,
             fulfillmentType = FulfillmentType.CONTAINER_QUANTITY_BASED,
             fulfillmentSource = FulfillmentSource.WEB_PORTAL,

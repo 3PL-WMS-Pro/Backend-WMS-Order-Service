@@ -25,6 +25,8 @@ data class CreateContainerQuantityBasedRequest(
     @field:NotNull(message = "Account ID is required")
     val accountId: Long,
 
+    val projectCode: String? = null,  // Optional billing project tag (null = unprojected)
+
     @field:NotNull(message = "Customer info is required")
     @field:Valid
     val customerInfo: CustomerInfoDto,
@@ -148,6 +150,8 @@ data class LocationReductionSummary(
 data class CreateLocationQuantityBasedRequest(
     @field:NotNull(message = "Account ID is required")
     val accountId: Long,
+
+    val projectCode: String? = null,  // Optional billing project tag (null = unprojected)
 
     @field:NotNull(message = "Customer info is required")
     @field:Valid

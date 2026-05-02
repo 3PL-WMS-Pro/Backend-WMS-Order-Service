@@ -1296,6 +1296,7 @@ class OrderFulfillmentService(
         val ofr = OrderFulfillmentRequest(
             fulfillmentId = fulfillmentId,
             accountId = request.accountId,
+            projectCode = request.projectCode,
             fulfillmentSource = request.fulfillmentSource,
             externalOrderId = request.externalOrderId,
             externalOrderNumber = request.externalOrderNumber,
