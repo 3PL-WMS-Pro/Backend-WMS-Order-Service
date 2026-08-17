@@ -1132,7 +1132,9 @@ class OrderFulfillmentService(
                 allocatedItems = items.map { item ->
                     AllocatedItem(
                         storageItemId = item.storageItemId,
-                        location = "IN_TRANSIT",
+                        // Preserve where the warehouse executive picked the item from. The
+                        // inventory item itself is moved to IN_TRANSIT later in this flow.
+                        location = item.sourceLocation?.trim()?.takeIf { it.isNotEmpty() } ?: "IN_TRANSIT",
                         picked = true,
                         pickedAt = LocalDateTime.now(),
                         pickedBy = createdBy

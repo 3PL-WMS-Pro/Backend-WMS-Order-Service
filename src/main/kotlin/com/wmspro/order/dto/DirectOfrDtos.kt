@@ -83,7 +83,10 @@ data class DirectPackageItemDto(
     @field:NotBlank(message = "Item barcode is required")
     val itemBarcode: String,
 
-    val skuId: Long? = null  // Required if itemType is SKU_ITEM
+    val skuId: Long? = null,  // Required if itemType is SKU_ITEM
+
+    // Internal warehouse pickup location captured before Inventory moves the item to IN_TRANSIT.
+    val sourceLocation: String? = null
 )
 
 data class LoadingDocumentsDto(
