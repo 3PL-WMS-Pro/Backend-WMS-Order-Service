@@ -612,8 +612,11 @@ class OrderFulfillmentDetailsService(
         // Calculate total items across all packages
         val totalItems = ofr.packages.sumOf { it.assignedItems.size }
 
-        // Determine email status
-        val emailStatus = if (ginNotification.sentToCustomer) {
+        // Determine email status. The manual case is checked first: it also sets
+        // sentToCustomer, and reporting "Success" would claim an email that never left.
+        val emailStatus = if (ginNotification.markedManually) {
+            "Marked as sent (no email)"
+        } else if (ginNotification.sentToCustomer) {
             "Success"
         } else if (ginNotification.sentAt != null) {
             "Failed"

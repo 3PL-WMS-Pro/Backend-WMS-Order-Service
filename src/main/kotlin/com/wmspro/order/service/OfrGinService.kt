@@ -12,6 +12,7 @@ import jakarta.validation.ValidationException
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
@@ -430,6 +431,102 @@ class OfrGinService(
 
         ofrRepository.save(updatedOFR)
         logger.info("Order Fulfillment Request updated with GIN sent status")
+    }
+
+    /**
+     * Record a GIN as sent without emailing it.
+     *
+     * The document reached the customer some other way — WhatsApp, their own mail client, handed
+     * over on paper — and the record needs to reflect that so it leaves GIN Pending. Sending a
+     * duplicate email the customer does not need is the only alternative today.
+     *
+     * No PDF is produced: `getGinPdfBytes` builds one on demand at download time, so a marked
+     * record stays downloadable with no extra work here.
+     *
+     * The OFR stage is DERIVED, not stored — `OfrStage.GIN_SENT` is the query
+     * `ginNumber != null AND ginNotification.sentToCustomer == true`, so setting that flag is all
+     * that is needed to put the record ON the GIN Sent card.
+     *
+     * It does NOT necessarily take the record off the card it came from. The stage criteria in
+     * `CustomOrderFulfillmentRequestRepositoryImpl.getStageCriteria` are not a partition:
+     * READY_TO_DISPATCH keys purely on `statusHistory` and says nothing about the GIN, so a record
+     * marked from that card matches both stages until its loading task completes. That overlap is
+     * pre-existing — `sendGinEmail` leaves `statusHistory` alone in exactly the same way — and is
+     * NOT introduced here, but do not mistake this method for something that relocates a record.
+     *
+     * @throws IllegalArgumentException when the OFR does not exist (404)
+     * @throws IllegalStateException when the GIN was already sent, no GIN number exists yet, the
+     *         order has not reached a point where a GIN could have been issued, or the supplied
+     *         date is in the future (409)
+     */
+    @Transactional
+    fun markGinSent(fulfillmentId: String, request: MarkGinSentRequest, authToken: String) {
+        logger.info("Marking GIN as sent (no email) for fulfillment request: {}", fulfillmentId)
+
+        val ofr = ofrRepository.findById(fulfillmentId).orElse(null)
+            ?: throw IllegalArgumentException("Order Fulfillment Request not found: $fulfillmentId")
+
+        val existing = ofr.ginNotification
+
+        // Already sent — whether emailed or previously marked. There is no un-send, and a second
+        // mark would silently overwrite the original timestamp and recipient record.
+        if (existing?.sentToCustomer == true) {
+            throw IllegalStateException("GIN for fulfillment request $fulfillmentId has already been sent")
+        }
+
+        // Without a GIN number the derived criteria match NEITHER pipeline card — GIN_SENT requires
+        // ginNumber to exist — so marking would make the record vanish from the outbound screen.
+        if (ofr.ginNumber.isNullOrBlank()) {
+            throw IllegalStateException(
+                "Fulfillment request $fulfillmentId has no GIN number yet, so its GIN cannot be marked as sent"
+            )
+        }
+
+        // A GIN is a goods-ISSUE note: it only makes sense once the order is at least ready to
+        // ship. Without this an order still being picked could be recorded as having had its GIN
+        // delivered. READY_TO_SHIP is checked anywhere in the history rather than as the current
+        // status, because the container-quantity flow appends it with currentStatus = false.
+        val reachedIssuePoint = ofr.loadingTaskId != null || ofr.statusHistory.any {
+            it.status == FulfillmentStatus.READY_TO_SHIP || it.status == FulfillmentStatus.SHIPPED
+        }
+        if (!reachedIssuePoint) {
+            throw IllegalStateException(
+                "Fulfillment request $fulfillmentId has not reached READY_TO_SHIP, so its GIN cannot be marked as sent"
+            )
+        }
+
+        // A past date is the normal case — the document went out days ago and is only being
+        // recorded now. A future date is a typo, and this endpoint refuses a second call.
+        if (request.ginDate != null && request.ginDate.isAfter(LocalDate.now())) {
+            throw IllegalStateException("GIN date ${request.ginDate} is in the future")
+        }
+
+        // `?: "System"` — extractUsername returns null for an expired or foreign-signed token, and
+        // this endpoint exists for its audit trail.
+        val username = jwtTokenExtractor.extractUsername(authToken) ?: "System"
+        val now = LocalDateTime.now()
+
+        // Built with copy() from whatever is already recorded, NOT with the constructor. A signed
+        // copy uploaded earlier, or attachments added along the way, must survive being marked as
+        // sent — and copy() also means a field added to GinNotification later is carried over
+        // rather than silently reset to its default by this method.
+        val markedNotification = (existing ?: GinNotification()).copy(
+            sentToCustomer = true,
+            sentAt = now,
+            markedManually = true,
+            markedBy = username,
+            note = request.note?.takeIf { it.isNotBlank() },
+            ginDate = request.ginDate?.atStartOfDay() ?: existing?.ginDate ?: now
+        )
+
+        val updatedOFR = ofr.copy(
+            ginNotification = markedNotification,
+            updatedBy = username,
+            updatedAt = now
+        )
+
+        ofrRepository.save(updatedOFR)
+        logger.info("Fulfillment request {} marked as GIN sent by {} (no email)", fulfillmentId, username)
     }
 
     /**

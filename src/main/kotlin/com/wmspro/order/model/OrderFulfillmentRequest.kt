@@ -264,6 +264,30 @@ data class GinNotification(
     var sentToCustomer: Boolean = false,
     val sentAt: LocalDateTime? = null,
 
+    /**
+     * True when staff recorded the GIN as sent without the application emailing it —
+     * the document reached the customer by some other channel. `sentToCustomer` alone cannot
+     * distinguish the two, and the OFR stage is derived from it, so without this flag a marked
+     * record is indistinguishable from an emailed one once it reaches GIN_SENT.
+     * Defaults to false, so existing records read as genuinely emailed.
+     */
+    val markedManually: Boolean = false,
+
+    /**
+     * Who recorded the GIN as sent manually.
+     *
+     * Held here rather than relying on `OrderFulfillmentRequest.updatedBy`, which is overwritten by
+     * any later write to the OFR — uploading the signed copy or editing the GIN details, both
+     * reachable from the same screen — and would erase the only record of who marked it. There is
+     * no undo, so this is the evidence that makes a mistake reconstructable. The GRN side gets the
+     * equivalent from its append-only statusHistory; the OFR's statusHistory holds
+     * FulfillmentStatus values only, so there is no honest entry to append there.
+     */
+    val markedBy: String? = null,
+
+    /** Optional free text explaining how the document actually reached the customer. */
+    val note: String? = null,
+
     // GIN Email Form Details
     val ginDate: LocalDateTime? = null,        // Business date for GIN document
     val toEmail: String? = null,               // Primary recipient email

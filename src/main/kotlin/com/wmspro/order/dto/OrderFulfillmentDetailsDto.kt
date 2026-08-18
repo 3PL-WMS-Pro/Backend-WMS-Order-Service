@@ -186,7 +186,10 @@ data class GinInfo(
     val completedAt: LocalDateTime?,
     val ginNumber: String?,
     val totalItems: Int,         // Sum of all package items
-    val emailStatus: String      // "Success" if sentToCustomer, else "Pending"/"Failed"
+    // "Marked as sent (no email)" when markedManually — checked FIRST, because a manual mark also
+    // sets sentToCustomer and "Success" would claim an email that never left. Otherwise
+    // "Success" if sentToCustomer, "Failed" if a send was attempted, else "Pending".
+    val emailStatus: String
 )
 
 data class GinFormDetails(

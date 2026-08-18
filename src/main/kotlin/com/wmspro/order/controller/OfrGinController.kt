@@ -324,6 +324,58 @@ class OfrGinController(
     }
 
     /**
+     * Mark GIN as Sent Without Emailing
+     * POST /api/v1/orders/gin/{fulfillmentId}/mark-sent
+     *
+     * Records the GIN as sent when the document reached the customer by some other channel.
+     * No PDF is generated and no email is sent. The OFR moves to the GIN Sent stage.
+     */
+    @PostMapping("/{fulfillmentId}/mark-sent")
+    fun markGinSent(
+        @PathVariable fulfillmentId: String,
+        @RequestBody request: MarkGinSentRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<String>> {
+        logger.info("POST /api/v1/orders/gin/{}/mark-sent", fulfillmentId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+
+        return try {
+            ofrGinService.markGinSent(fulfillmentId, request, authToken)
+
+            ResponseEntity.ok(
+                ApiResponse.success(
+                    "No email was sent for $fulfillmentId",
+                    "GIN marked as sent"
+                )
+            )
+        } catch (e: IllegalArgumentException) {
+            logger.error("Order Fulfillment Request not found: $fulfillmentId", e)
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(
+                ApiResponse.error(
+                    e.message ?: "Order Fulfillment Request not found"
+                )
+            )
+        } catch (e: IllegalStateException) {
+            // Already sent, or no GIN number yet. Both are the caller asking for something the
+            // record's state does not allow, not a server fault.
+            logger.warn("Cannot mark GIN as sent for {}: {}", fulfillmentId, e.message)
+            ResponseEntity.status(HttpStatus.CONFLICT).body(
+                ApiResponse.error(
+                    e.message ?: "GIN cannot be marked as sent in its current state"
+                )
+            )
+        } catch (e: Exception) {
+            logger.error("Error marking GIN as sent", e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(
+                ApiResponse.error(
+                    "Internal server error: ${e.message}"
+                )
+            )
+        }
+    }
+
+    /**
      * Add or Update GIN Attachment
      * POST /api/v1/orders/gin/{fulfillmentId}/attachments
      *

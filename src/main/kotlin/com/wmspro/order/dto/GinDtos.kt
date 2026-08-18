@@ -1,5 +1,6 @@
 package com.wmspro.order.dto
 
+import java.time.LocalDate
 import java.time.LocalDateTime
 
 /**
@@ -80,6 +81,21 @@ data class SendGinRequest(
     val subject: String,
     val emailContent: String,
     val emailConfigKey: String = "default" // Which email config to use
+)
+
+/**
+ * Request DTO for recording a GIN as sent WITHOUT the application emailing it.
+ *
+ * Deliberately not a flag on [SendGinRequest]: that DTO requires `toEmail`, `subject` and
+ * `emailContent`, none of which exist here, and reusing it would leave the audit trail unable
+ * to tell an emailed GIN from a manually recorded one afterwards.
+ *
+ * @param ginDate Business date to record on the GIN document. Defaults to today when absent.
+ * @param note Optional free text explaining how the document actually reached the customer.
+ */
+data class MarkGinSentRequest(
+    val ginDate: LocalDate? = null,
+    val note: String? = null
 )
 
 /**
