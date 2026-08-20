@@ -41,7 +41,9 @@ class GinExcelGenerationService {
             rows = ginData.items.map { item ->
                 listOf(
                     Value.Text(item.itemCode),
-                    Value.Text(item.description),
+                    // The GIN aggregation builds plain descriptions today, so this is a no-op fast
+                    // path — kept so the two documents stay identical if that ever changes.
+                    Value.Text(DocumentExcelWriter.plainText(item.description)),
                     Value.Text(item.itemType),
                     Value.Integer(item.quantityOrdered),
                     Value.Integer(item.quantityPicked),
