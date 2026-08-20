@@ -23,6 +23,11 @@ class OfrGinController(
 
     private val logger = LoggerFactory.getLogger(javaClass)
 
+    private companion object {
+        const val XLSX_CONTENT_TYPE =
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    }
+
     /**
      * API 174: Get Companies with Ready GINs
      * GET /api/v1/orders/gin/companies-with-ready-gins
@@ -271,6 +276,38 @@ class OfrGinController(
                     "Internal server error: ${e.message}"
                 )
             )
+        }
+    }
+
+    /**
+     * Download GIN as Excel
+     * GET /api/v1/orders/gin/{fulfillmentId}/download-excel
+     *
+     * Same data as the PDF, laid out for reading and re-use in a spreadsheet. Always the generated
+     * document — an uploaded signed copy is a PDF and has no spreadsheet equivalent.
+     */
+    @GetMapping("/{fulfillmentId}/download-excel")
+    fun downloadGinExcel(
+        @PathVariable fulfillmentId: String,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ByteArray> {
+        logger.info("GET /api/v1/orders/gin/{}/download-excel", fulfillmentId)
+
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+
+        return try {
+            val bytes = ofrGinService.generateGinExcel(fulfillmentId, authToken)
+
+            ResponseEntity.ok()
+                .header("Content-Type", XLSX_CONTENT_TYPE)
+                .header("Content-Disposition", "attachment; filename=\"GIN_$fulfillmentId.xlsx\"")
+                .body(bytes)
+        } catch (e: IllegalArgumentException) {
+            logger.error("Order Fulfillment Request not found: $fulfillmentId", e)
+            ResponseEntity.status(HttpStatus.NOT_FOUND).build()
+        } catch (e: Exception) {
+            logger.error("Error generating GIN Excel", e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).build()
         }
     }
 

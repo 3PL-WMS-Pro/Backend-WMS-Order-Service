@@ -60,6 +60,7 @@ class MarkGinSentTest {
             accountService = mock(AccountService::class.java),
             ginDataAggregationService = mock(GinDataAggregationService::class.java),
             ginPdfGenerationService = mock(GinPdfGenerationService::class.java),
+            ginExcelGenerationService = mock(GinExcelGenerationService::class.java),
             ginEmailService = ginEmailService,
             jwtTokenExtractor = jwtTokenExtractor
         )

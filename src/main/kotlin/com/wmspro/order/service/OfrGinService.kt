@@ -27,6 +27,7 @@ class OfrGinService(
     private val accountService: AccountService,
     private val ginDataAggregationService: GinDataAggregationService,
     private val ginPdfGenerationService: GinPdfGenerationService,
+    private val ginExcelGenerationService: GinExcelGenerationService,
     private val ginEmailService: GinEmailService,
     private val jwtTokenExtractor: JwtTokenExtractor
 ) {
@@ -344,6 +345,31 @@ class OfrGinService(
 
         // Generate PDF
         return ginPdfGenerationService.generateGinPdf(ginData)
+    }
+
+    /**
+     * Generate the same GIN as a spreadsheet.
+     *
+     * Aggregated through the identical path as the PDF, so the two formats cannot disagree about
+     * what was shipped.
+     *
+     * Like [generateGinPdf], this always renders the generated document. Only [previewGinPdf] and
+     * the email path substitute an uploaded signed copy, and neither is reachable from a download
+     * endpoint — so choosing Excel over PDF never silently changes *which* document you get.
+     */
+    fun generateGinExcel(fulfillmentId: String, authToken: String): ByteArray {
+        logger.info("Generating GIN Excel for fulfillment request: {}", fulfillmentId)
+
+        val ginData = ginDataAggregationService.aggregateGinData(fulfillmentId, authToken)
+
+        // Rewrapped because the controller reads IllegalArgumentException as "no such fulfillment
+        // request" and answers 404. POI raises exactly that type for its own limits, so a rendering
+        // fault would otherwise be reported to the customer as a missing document.
+        return try {
+            ginExcelGenerationService.generateGinExcel(ginData)
+        } catch (e: IllegalArgumentException) {
+            throw IllegalStateException("Failed to render GIN Excel for $fulfillmentId", e)
+        }
     }
 
     /**
