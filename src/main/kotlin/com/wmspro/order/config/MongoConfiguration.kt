@@ -5,6 +5,7 @@ import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
 import org.springframework.data.mongodb.MongoDatabaseFactory
+import org.springframework.data.mongodb.MongoTransactionManager
 import org.springframework.data.mongodb.core.MongoTemplate
 
 @Configuration
@@ -38,4 +39,8 @@ class MongoConfiguration {
         logger.info("Creating MongoTemplate with TenantAwareMongoDatabaseFactory")
         return MongoTemplate(mongoDatabaseFactory)
     }
+
+    @Bean
+    fun mongoTransactionManager(factory: MongoDatabaseFactory): MongoTransactionManager =
+        MongoTransactionManager(factory)
 }

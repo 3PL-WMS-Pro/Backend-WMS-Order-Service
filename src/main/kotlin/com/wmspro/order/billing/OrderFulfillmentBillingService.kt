@@ -34,9 +34,12 @@ class OrderFulfillmentBillingService(
         val existing = repository.findById(fulfillmentId).orElseThrow {
             IllegalArgumentException("OrderFulfillmentRequest '$fulfillmentId' not found")
         }
-        if (existing.billingInvoiceId != null) {
+        if (existing.billingInvoiceId != null || existing.billingClaim?.state in setOf(
+                com.wmspro.common.billing.BillingSourceClaimState.RESERVED,
+                com.wmspro.common.billing.BillingSourceClaimState.COMMITTED
+            )) {
             throw IllegalStateException(
-                "OrderFulfillmentRequest '$fulfillmentId' is locked to billing invoice '${existing.billingInvoiceId}'. " +
+                "OrderFulfillmentRequest '$fulfillmentId' is locked for billing. " +
                 "Cancel the billing run first to change its project code."
             )
         }

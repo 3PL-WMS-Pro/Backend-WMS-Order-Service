@@ -1,6 +1,8 @@
 package com.wmspro.order.billing
 
 import com.wmspro.common.dto.ApiResponse
+import com.wmspro.common.billing.ReserveBillingSourceClaimRequest
+import com.wmspro.common.billing.TransitionBillingSourceClaimRequest
 import jakarta.validation.constraints.NotBlank
 import org.slf4j.LoggerFactory
 import org.springframework.http.HttpStatus
@@ -17,7 +19,8 @@ import org.springframework.web.bind.annotation.*
 @RestController
 @RequestMapping("/api/v1/internal/orders")
 class OrderFulfillmentBillingInternalController(
-    private val service: OrderFulfillmentBillingService
+    private val service: OrderFulfillmentBillingService,
+    private val claimService: OrderFulfillmentBillingClaimService
 ) {
     private val logger = LoggerFactory.getLogger(javaClass)
 
@@ -56,6 +59,30 @@ class OrderFulfillmentBillingInternalController(
                 ApiResponse.error("Internal server error: ${e.message}")
             )
         }
+    }
+
+    @PostMapping("/{id}/billing-claim")
+    fun reserveClaim(@PathVariable id: String, @RequestBody request: ReserveBillingSourceClaimRequest) = claimResponse {
+        claimService.reserve(id, request)
+    }
+
+    @PostMapping("/{id}/billing-claim/commit")
+    fun commitClaim(@PathVariable id: String, @RequestBody request: TransitionBillingSourceClaimRequest) = claimResponse {
+        claimService.commit(id, request)
+    }
+
+    @PostMapping("/{id}/billing-claim/release")
+    fun releaseClaim(@PathVariable id: String, @RequestBody request: TransitionBillingSourceClaimRequest) = claimResponse {
+        claimService.release(id, request)
+    }
+
+    private fun claimResponse(action: () -> com.wmspro.order.model.OrderFulfillmentRequest): ResponseEntity<ApiResponse<Unit>> = try {
+        action()
+        ResponseEntity.ok(ApiResponse.success(Unit, "Billing claim updated"))
+    } catch (e: IllegalArgumentException) {
+        ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(e.message ?: "Not found"))
+    } catch (e: OrderBillingClaimConflict) {
+        ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(e.message ?: "CUTOVER_CONFLICT"))
     }
 }
 

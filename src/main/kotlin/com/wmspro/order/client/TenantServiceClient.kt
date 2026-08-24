@@ -37,7 +37,20 @@ interface TenantServiceClient {
     fun getBillingProfile(
         @PathVariable customerId: Long
     ): ApiResponse<BillingProfileLite>
+
+    @GetMapping("/api/v1/internal/billing-invoices/{billingInvoiceId}/claim-authorization")
+    fun authorizeBillingClaim(
+        @PathVariable billingInvoiceId: String,
+        @RequestParam payloadVersion: Long
+    ): ApiResponse<BillingClaimAuthorization>
 }
+
+@JsonIgnoreProperties(ignoreUnknown = true)
+data class BillingClaimAuthorization(
+    val billingInvoiceId: String,
+    val generationContractVersion: String,
+    val payloadVersion: Long
+)
 
 /**
  * Subset of CustomerBillingProfile for projectCode validation. Other fields

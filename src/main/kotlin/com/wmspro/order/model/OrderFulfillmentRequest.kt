@@ -1,12 +1,16 @@
 package com.wmspro.order.model
 
+import com.wmspro.common.billing.BillingSourceClaim
 import com.wmspro.order.enums.*
 import org.springframework.data.annotation.Id
 import org.springframework.data.mongodb.core.index.Indexed
+import org.springframework.data.mongodb.core.index.CompoundIndex
 import org.springframework.data.mongodb.core.mapping.Document
+import org.springframework.data.mongodb.core.mapping.Field
 import java.time.LocalDateTime
 
 @Document(collection = "order_fulfillment_requests")
+@CompoundIndex(name = "wj_v1_claim_sweep_idx", def = "{'billingClaim.generationContractVersion':1,'billingClaim.state':1,'billingClaim.expiresAt':1}")
 data class OrderFulfillmentRequest(
     @Id
     val fulfillmentId: String,  // Primary key: "OFR-001", "OFR-002", etc.
@@ -118,7 +122,10 @@ data class OrderFulfillmentRequest(
     val updatedBy: String? = null,
 
     val createdAt: LocalDateTime = LocalDateTime.now(),
-    val updatedAt: LocalDateTime = LocalDateTime.now()
+    val updatedAt: LocalDateTime = LocalDateTime.now(),
+
+    @Field(write = Field.Write.NON_NULL)
+    val billingClaim: BillingSourceClaim? = null
 )
 
 // Nested data classes
