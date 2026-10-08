@@ -22,7 +22,8 @@ class OrderFulfillmentController(
     private val ofrEnrichmentService: com.wmspro.order.service.OfrEnrichmentService,
     private val jwtTokenExtractor: JwtTokenExtractor,
     private val containerQuantityOutboundService: com.wmspro.order.service.ContainerQuantityOutboundService,
-    private val locationQuantityOutboundService: com.wmspro.order.service.LocationQuantityOutboundService
+    private val locationQuantityOutboundService: com.wmspro.order.service.LocationQuantityOutboundService,
+    private val ofrAmendmentService: com.wmspro.order.service.OfrAmendmentService
 ) {
 
     private val logger = LoggerFactory.getLogger(javaClass)
@@ -1047,6 +1048,79 @@ class OrderFulfillmentController(
             ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(ApiResponse.error(e.message ?: "Internal server error"))
+        }
+    }
+
+    /**
+     * Add items to an outbound order whose GIN has not been sent to the customer yet.
+     * Method: POST
+     * Endpoints, one per way the order was created:
+     *   /{fulfillmentId}/add-items                       barcoded (created through /direct)
+     *   /{fulfillmentId}/add-location-quantity-items     location-quantity-based
+     *   /{fulfillmentId}/add-container-quantity-items    container-quantity-based
+     *
+     * Refused with 409 once the GIN is sent or the order is billed.
+     */
+    @PostMapping("/{fulfillmentId}/add-items")
+    fun addBarcodedItems(
+        @PathVariable fulfillmentId: String,
+        @Valid @RequestBody request: AddDirectItemsRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<AddOfrItemsResponse>> = amend(fulfillmentId, httpRequest) { user, authToken ->
+        ofrAmendmentService.addBarcodedItems(fulfillmentId, request, user, authToken)
+    }
+
+    @PostMapping("/{fulfillmentId}/add-location-quantity-items")
+    fun addLocationQuantityItems(
+        @PathVariable fulfillmentId: String,
+        @Valid @RequestBody request: AddLocationQuantityItemsRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<AddOfrItemsResponse>> = amend(fulfillmentId, httpRequest) { user, authToken ->
+        ofrAmendmentService.addLocationQuantityItems(fulfillmentId, request, user ?: "SYSTEM", authToken)
+    }
+
+    @PostMapping("/{fulfillmentId}/add-container-quantity-items")
+    fun addContainerQuantityItems(
+        @PathVariable fulfillmentId: String,
+        @Valid @RequestBody request: AddContainerQuantityItemsRequest,
+        httpRequest: HttpServletRequest
+    ): ResponseEntity<ApiResponse<AddOfrItemsResponse>> = amend(fulfillmentId, httpRequest) { user, authToken ->
+        ofrAmendmentService.addContainerQuantityItems(fulfillmentId, request, user ?: "SYSTEM", authToken)
+    }
+
+    private fun amend(
+        fulfillmentId: String,
+        httpRequest: HttpServletRequest,
+        add: (user: String?, authToken: String) -> AddOfrItemsResponse
+    ): ResponseEntity<ApiResponse<AddOfrItemsResponse>> {
+        val authToken = httpRequest.getHeader("Authorization") ?: ""
+        val username = try {
+            jwtTokenExtractor.extractUsername(authToken)
+        } catch (e: Exception) {
+            null
+        }
+        logger.info("POST add items to {} by {}", fulfillmentId, username)
+
+        return try {
+            val response = add(username, authToken)
+            val message = if (response.skippedBarcodes.isEmpty()) {
+                "Added ${response.addedItems} item(s) to ${response.ginNumber}"
+            } else {
+                "Added ${response.addedItems} item(s) to ${response.ginNumber}; " +
+                    "${response.skippedBarcodes.size} could not be shipped and were left off"
+            }
+            ResponseEntity.ok(ApiResponse.success(response, message))
+        } catch (e: NoSuchElementException) {
+            ResponseEntity.status(HttpStatus.NOT_FOUND).body(ApiResponse.error(e.message ?: "Outbound order not found"))
+        } catch (e: IllegalStateException) {
+            ResponseEntity.status(HttpStatus.CONFLICT).body(ApiResponse.error(e.message ?: "Items can no longer be added"))
+        } catch (e: IllegalArgumentException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(e.message ?: "Validation error"))
+        } catch (e: com.wmspro.order.exception.InvalidOrderRequestException) {
+            ResponseEntity.status(HttpStatus.BAD_REQUEST).body(ApiResponse.error(e.message ?: "Validation error"))
+        } catch (e: Exception) {
+            logger.error("Error adding items to {}", fulfillmentId, e)
+            ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(ApiResponse.error(e.message ?: "Failed to add items"))
         }
     }
 

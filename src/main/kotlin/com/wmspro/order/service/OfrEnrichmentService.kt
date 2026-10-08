@@ -357,7 +357,8 @@ class OfrEnrichmentService(
             updatedBy = ofr.updatedBy,
             updatedByUserName = ofr.updatedBy?.let { userNames[it] },
             createdAt = ofr.createdAt,
-            updatedAt = ofr.updatedAt
+            updatedAt = ofr.updatedAt,
+            addItemsBlockedReason = OfrAmendmentService.refusalReason(ofr)
         )
     }
 

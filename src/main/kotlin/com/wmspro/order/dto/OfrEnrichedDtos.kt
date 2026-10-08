@@ -81,7 +81,10 @@ data class OfrEnrichedResponse(
     val updatedByUserName: String?, // ENRICHED from User Service
 
     val createdAt: LocalDateTime,
-    val updatedAt: LocalDateTime
+    val updatedAt: LocalDateTime,
+
+    /** Why items cannot be added to this order now; null while they can (GIN not yet sent, unbilled). */
+    val addItemsBlockedReason: String? = null
 )
 
 /**

@@ -1079,131 +1079,20 @@ class OrderFulfillmentService(
         logger.info("Generated fulfillment ID: {} and GIN: {}", fulfillmentId, ginNumber)
 
         // Step 2: Validate package barcodes are unique and not already used
-        val duplicateBarcodes = mutableListOf<String>()
-        val providedBarcodes = mutableSetOf<String>()
-
-        request.packages.forEach { pkg ->
-            val barcode = pkg.packageBarcode
-
-            // Check for duplicates within the request
-            if (!providedBarcodes.add(barcode)) {
-                duplicateBarcodes.add(barcode)
-                logger.warn("Duplicate package barcode in request: {}", barcode)
-            }
-
-            // Check if barcode already exists in database
-            if (ofrRepository.existsByPackagesPackageBarcode(barcode)) {
-                logger.error("Package barcode already exists in system: {}", barcode)
-                throw InvalidOrderRequestException("Package barcode '$barcode' has already been used in another order")
-            }
-        }
-
-        if (duplicateBarcodes.isNotEmpty()) {
-            throw InvalidOrderRequestException("Duplicate package barcodes found in request: ${duplicateBarcodes.joinToString(", ")}")
-        }
+        validateNewPackageBarcodes(request.packages.map { it.packageBarcode })
 
         // Step 3: Build LineItems from packages
-        // Group items by SKU/itemBarcode to create line items
-        val allItems = request.packages.flatMap { pkg ->
-            pkg.items.map { item -> item }
-        }
-
-        val itemGroups = allItems.groupBy { item ->
-            if (item.itemType == ItemType.SKU_ITEM && item.skuId != null) {
-                "SKU-${item.skuId}"
-            } else {
-                "ITEM-${item.itemBarcode}"
-            }
-        }
-
-        val lineItems = mutableListOf<LineItem>()
-        itemGroups.forEach { (key, items) ->
-            val lineItemId = sequenceGeneratorService.generateLineItemId()
-            val firstItem = items.first()
-
-            val lineItem = LineItem(
-                lineItemId = lineItemId,
-                itemType = firstItem.itemType,
-                skuId = firstItem.skuId,
-                itemBarcode = if (firstItem.itemType != ItemType.SKU_ITEM) firstItem.itemBarcode else null,
-                quantityOrdered = items.size,
-                quantityPicked = items.size,    // Already picked
-                quantityShipped = items.size,   // Already shipped
-                allocatedItems = items.map { item ->
-                    AllocatedItem(
-                        storageItemId = item.storageItemId,
-                        // Preserve where the warehouse executive picked the item from. The
-                        // inventory item itself is moved to IN_TRANSIT later in this flow.
-                        location = item.sourceLocation?.trim()?.takeIf { it.isNotEmpty() } ?: "IN_TRANSIT",
-                        picked = true,
-                        pickedAt = LocalDateTime.now(),
-                        pickedBy = createdBy
-                    )
-                }.toMutableList()
-            )
-
-            lineItems.add(lineItem)
-        }
+        val allItems = request.packages.flatMap { it.items }
+        val lineItems = buildDirectLineItems(allItems, createdBy)
 
         // Step 4: Build Packages with AssignedItems
-        val packages = request.packages.mapIndexed { index, pkgDto ->
-            Package(
-                packageId = sequenceGeneratorService.generatePackageId(),
-                packageBarcode = pkgDto.packageBarcode,
-                dimensions = PackageDimensions(
-                    length = pkgDto.dimensions.length,
-                    width = pkgDto.dimensions.width,
-                    height = pkgDto.dimensions.height,
-                    unit = pkgDto.dimensions.unit
-                ),
-                weight = PackageWeight(
-                    value = pkgDto.weight.value,
-                    unit = pkgDto.weight.unit
-                ),
-                assignedItems = pkgDto.items.map { item ->
-                    AssignedItem(
-                        storageItemId = item.storageItemId,
-                        skuId = item.skuId,
-                        itemType = item.itemType,
-                        itemBarcode = item.itemBarcode
-                    )
-                }.toMutableList(),
-                loadedOnTruck = true,
-                truckNumber = request.truckNumber,
-                loadedAt = LocalDateTime.now(),
-                createdAt = LocalDateTime.now()
-            )
-        }.toMutableList()
+        val packages = buildDirectPackages(request.packages, request.truckNumber)
 
         logger.info("Built {} line items and {} packages", lineItems.size, packages.size)
 
         // Step 5: Update ALL storage items to IN_TRANSIT
-        logger.info("Updating {} storage items to IN_TRANSIT", allItems.size)
-        var inventoryUpdateSuccessCount = 0
-        var inventoryUpdateFailureCount = 0
-
-        allItems.forEach { item ->
-            try {
-                inventoryServiceClient.changeStorageItemLocation(
-                    itemBarcode = item.itemBarcode,
-                    request = com.wmspro.order.client.ChangeLocationRequest(
-                        newLocation = "IN_TRANSIT",
-                        taskCode = fulfillmentId,
-                        action = "SHIPPED",
-                        notes = "Direct processing - item shipped immediately via web portal",
-                        reason = "Express fulfillment without task execution"
-                    ),
-                    authToken = authToken
-                )
-                inventoryUpdateSuccessCount++
-                logger.debug("Updated inventory location for item: {}", item.itemBarcode)
-            } catch (e: Exception) {
-                inventoryUpdateFailureCount++
-                logger.error("Failed to update inventory location for ${item.itemBarcode}: ${e.message}", e)
-            }
-        }
-
-        logger.info("Inventory updates: {} succeeded, {} failed", inventoryUpdateSuccessCount, inventoryUpdateFailureCount)
+        val shipment = shipDirectItems(allItems, fulfillmentId, authToken)
+        applyPickupLocations(lineItems, shipment.pickedFrom)
 
         // Step 6: Handle AWB generation if requested
         var awbDetails: AwbDetailsResponse? = null
@@ -1401,6 +1290,137 @@ class OrderFulfillmentService(
         )
     }
 
+    /** Package barcodes must be unique within the request and never used by another order. */
+    internal fun validateNewPackageBarcodes(barcodes: List<String>) {
+        val duplicates = barcodes.groupingBy { it }.eachCount().filter { it.value > 1 }.keys
+        if (duplicates.isNotEmpty()) {
+            throw InvalidOrderRequestException("Duplicate package barcodes found in request: ${duplicates.joinToString(", ")}")
+        }
+        barcodes.forEach { barcode ->
+            if (ofrRepository.existsByPackagesPackageBarcode(barcode)) {
+                logger.error("Package barcode already exists in system: {}", barcode)
+                throw InvalidOrderRequestException("Package barcode '$barcode' has already been used in another order")
+            }
+        }
+    }
+
+    /** One line item per SKU, or per container barcode, with every item allocated and picked. */
+    internal fun buildDirectLineItems(items: List<DirectPackageItemDto>, pickedBy: String?): MutableList<LineItem> =
+        items.groupBy { item ->
+            if (item.itemType == ItemType.SKU_ITEM && item.skuId != null) "SKU-${item.skuId}" else "ITEM-${item.itemBarcode}"
+        }.values.map { group ->
+            val first = group.first()
+            LineItem(
+                lineItemId = sequenceGeneratorService.generateLineItemId(),
+                itemType = first.itemType,
+                skuId = first.skuId,
+                itemBarcode = if (first.itemType != ItemType.SKU_ITEM) first.itemBarcode else null,
+                quantityOrdered = group.size,
+                quantityPicked = group.size,    // Already picked
+                quantityShipped = group.size,   // Already shipped
+                allocatedItems = group.map { item ->
+                    AllocatedItem(
+                        storageItemId = item.storageItemId,
+                        // Preserve where the warehouse executive picked the item from. The
+                        // inventory item itself is moved to IN_TRANSIT later in this flow.
+                        location = item.sourceLocation?.trim()?.takeIf { it.isNotEmpty() } ?: "IN_TRANSIT",
+                        picked = true,
+                        pickedAt = LocalDateTime.now(),
+                        pickedBy = pickedBy
+                    )
+                }.toMutableList()
+            )
+        }.toMutableList()
+
+    internal fun buildDirectPackages(packages: List<DirectPackageDto>, truckNumber: String?): MutableList<Package> =
+        packages.map { pkgDto ->
+            Package(
+                packageId = sequenceGeneratorService.generatePackageId(),
+                packageBarcode = pkgDto.packageBarcode,
+                dimensions = PackageDimensions(
+                    length = pkgDto.dimensions.length,
+                    width = pkgDto.dimensions.width,
+                    height = pkgDto.dimensions.height,
+                    unit = pkgDto.dimensions.unit
+                ),
+                weight = PackageWeight(
+                    value = pkgDto.weight.value,
+                    unit = pkgDto.weight.unit
+                ),
+                assignedItems = pkgDto.items.map { item ->
+                    AssignedItem(
+                        storageItemId = item.storageItemId,
+                        skuId = item.skuId,
+                        itemType = item.itemType,
+                        itemBarcode = item.itemBarcode
+                    )
+                }.toMutableList(),
+                loadedOnTruck = true,
+                truckNumber = truckNumber,
+                loadedAt = LocalDateTime.now(),
+                createdAt = LocalDateTime.now()
+            )
+        }.toMutableList()
+
+    internal data class DirectShipment(
+        /** Where each item was picked from, by storageItemId, as Inventory reported on the move. */
+        val pickedFrom: Map<Long, String>,
+        /** Barcodes Inventory refused to move. */
+        val failedBarcodes: List<String>
+    )
+
+    /**
+     * Moves each item to IN_TRANSIT, recording where it was picked from.
+     *
+     * The screen does not send `sourceLocation` for barcoded items, so every allocation used to
+     * read IN_TRANSIT and the internal pick list had no pickup location for any item. Inventory's
+     * reply to the move names the bin the item left, which is exactly the pickup location.
+     */
+    internal fun shipDirectItems(items: List<DirectPackageItemDto>, fulfillmentId: String, authToken: String): DirectShipment {
+        logger.info("Updating {} storage items to IN_TRANSIT", items.size)
+        val pickedFrom = mutableMapOf<Long, String>()
+        val failed = mutableListOf<String>()
+        items.forEach { item ->
+            try {
+                val response = inventoryServiceClient.changeStorageItemLocation(
+                    itemBarcode = item.itemBarcode,
+                    request = com.wmspro.order.client.ChangeLocationRequest(
+                        newLocation = "IN_TRANSIT",
+                        taskCode = fulfillmentId,
+                        action = "SHIPPED",
+                        notes = "Direct processing - item shipped immediately via web portal",
+                        reason = "Express fulfillment without task execution"
+                    ),
+                    authToken = authToken
+                )
+                if (response.success) {
+                    response.data?.previousLocation?.locationCode
+                        ?.takeUnless { it.equals("IN_TRANSIT", ignoreCase = true) }
+                        ?.let { pickedFrom[item.storageItemId] = it }
+                } else {
+                    failed += item.itemBarcode
+                    logger.error("Inventory refused to ship {}: {}", item.itemBarcode, response.message)
+                }
+                logger.debug("Updated inventory location for item: {}", item.itemBarcode)
+            } catch (e: Exception) {
+                failed += item.itemBarcode
+                logger.error("Failed to update inventory location for ${item.itemBarcode}: ${e.message}", e)
+            }
+        }
+        logger.info("Inventory updates: {} succeeded, {} failed", items.size - failed.size, failed.size)
+        return DirectShipment(pickedFrom, failed)
+    }
+
+    /** Fills in the pickup location for allocations still carrying the IN_TRANSIT placeholder. */
+    internal fun applyPickupLocations(lineItems: List<LineItem>, pickedFrom: Map<Long, String>) {
+        lineItems.forEach { line ->
+            line.allocatedItems.replaceAll { allocated ->
+                val bin = pickedFrom[allocated.storageItemId]
+                if (bin != null && allocated.location.equals("IN_TRANSIT", ignoreCase = true)) allocated.copy(location = bin) else allocated
+            }
+        }
+    }
+
     /**
      * Helper: Build GIN attachments from loading documents
      */
@@ -1434,7 +1454,7 @@ class OrderFulfillmentService(
      * Helper: Consume package barcodes for Direct OFR
      * Marks package barcodes as CONSUMED in the Inventory Service
      */
-    private fun consumePackageBarcodesForDirectOFR(packageBarcodes: List<String>, authToken: String?) {
+    internal fun consumePackageBarcodesForDirectOFR(packageBarcodes: List<String>, authToken: String?) {
         if (packageBarcodes.isEmpty()) {
             logger.debug("No package barcodes to consume")
             return

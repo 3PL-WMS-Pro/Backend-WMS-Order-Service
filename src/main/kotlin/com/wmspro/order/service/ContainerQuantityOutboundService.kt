@@ -495,6 +495,44 @@ class ContainerQuantityOutboundService(
     }
 
     /**
+     * Picks more items onto an existing OFR whose GIN has not been sent, through the same
+     * validation, stock reduction, package-barcode and transaction steps as [createOFR]. Returns
+     * the lines, packages and sources built for the addition; [OfrAmendmentService] merges them.
+     */
+    fun prepareAddition(
+        existing: OrderFulfillmentRequest,
+        itemsPicked: List<ItemPickedContainerBasedDto>,
+        packages: List<PackageDto>,
+        user: String,
+        authToken: String?
+    ): OfrAddition {
+        val request = CreateContainerQuantityBasedRequest(
+            accountId = existing.accountId,
+            projectCode = existing.projectCode,
+            customerInfo = existing.customerInfoDto(),
+            shippingAddress = existing.shippingAddressDto(),
+            itemsPicked = itemsPicked,
+            packages = packages,
+            // AWB handling belongs to the original order; the addition never creates one.
+            shippingDetails = ShippingDetailsDto(awbCondition = AwbCondition.CUSTOMER_CREATES)
+        )
+        validateRequest(request)
+        val inventoryData = checkInventoryAvailability(request)
+        val reductions = reduceInventory(request, inventoryData, user)
+        consumePackageBarcodes(packages.map { it.packageBarcode }, authToken)
+        val transactionIds = createQuantityTransactions(request, reductions, existing.fulfillmentId, user)
+        val built = buildOrderFulfillmentRequest(
+            request, existing.fulfillmentId, requireNotNull(existing.ginNumber), reductions, transactionIds, user
+        )
+        return OfrAddition(
+            lineItems = built.lineItems,
+            packages = built.packages,
+            itemSources = built.quantitySourceDetails?.itemSources.orEmpty(),
+            itemCount = itemsPicked.sumOf { it.totalQuantityPicked }
+        )
+    }
+
+    /**
      * STEP 10: Build Response
      * Constructs the response DTO
      */
