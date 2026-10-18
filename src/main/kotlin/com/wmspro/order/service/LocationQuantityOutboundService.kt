@@ -46,8 +46,9 @@ class LocationQuantityOutboundService(
      * 8. Save OrderFulfillmentRequest
      * 9. Build Response
      */
-    fun createOFR(request: CreateLocationQuantityBasedRequest, user: String, authToken: String? = null): LocationQuantityBasedOFRResponse {
+    fun createOFR(submitted: CreateLocationQuantityBasedRequest, user: String, authToken: String? = null): LocationQuantityBasedOFRResponse {
         val tenantId = TenantContext.requireCurrentTenant()
+        val request = submitted.copy(itemsPicked = submitted.itemsPicked.map { it.withRepeatedBinsMerged() })
 
         logger.info("Creating location-based quantity OFR for accountId=${request.accountId}, tenant=$tenantId")
 
@@ -209,23 +210,26 @@ class LocationQuantityOutboundService(
                 )
             }
 
-            // Validate each source location
-            val locationMap = inventory.locationAllocations.associateBy { it.locationCode }
+            // Validate each source location. A lot received with the same bin on two rows holds
+            // their sum there, so allocations are added up per bin, never keyed one row per bin.
+            val availableByLocation = inventory.locationAllocations
+                .groupingBy { it.locationCode }
+                .fold(0) { total, allocation -> total + allocation.quantity }
 
             for (source in itemPicked.sourceLocations) {
-                val locationAllocation = locationMap[source.locationCode]
+                val available = availableByLocation[source.locationCode]
                     ?: throw IllegalArgumentException(
                         "Location ${source.locationCode} not found in ${itemPicked.quantityInventoryId}. " +
-                        "Available locations: ${locationMap.keys.joinToString()}"
+                        "Available locations: ${availableByLocation.keys.joinToString()}"
                     )
 
                 // Validate sufficient quantity at location
-                if (locationAllocation.quantity < source.quantityPicked) {
+                if (available < source.quantityPicked) {
                     throw IllegalArgumentException(
                         "Insufficient inventory at location ${source.locationCode}: " +
-                        "available=${locationAllocation.quantity}, " +
+                        "available=$available, " +
                         "requested=${source.quantityPicked}, " +
-                        "shortfall=${source.quantityPicked - locationAllocation.quantity}"
+                        "shortfall=${source.quantityPicked - available}"
                     )
                 }
             }
@@ -271,14 +275,11 @@ class LocationQuantityOutboundService(
 
             // Build location reduction summaries
             val locationReductionSummaries = itemPicked.sourceLocations.map { source ->
-                val beforeLoc = beforeInventory.locationAllocations.find { it.locationCode == source.locationCode }
-                val afterLoc = response.updatedLocations.find { it.locationCode == source.locationCode }
-
                 LocationReductionSummaryData(
                     locationCode = source.locationCode,
                     quantityReduced = source.quantityPicked,
-                    previousQuantity = beforeLoc?.quantity ?: 0,
-                    newQuantity = afterLoc?.quantity ?: 0
+                    previousQuantity = beforeInventory.locationAllocations.filter { it.locationCode == source.locationCode }.sumOf { it.quantity },
+                    newQuantity = response.updatedLocations.filter { it.locationCode == source.locationCode }.sumOf { it.quantity }
                 )
             }
 
@@ -579,7 +580,7 @@ class LocationQuantityOutboundService(
             projectCode = existing.projectCode,
             customerInfo = existing.customerInfoDto(),
             shippingAddress = existing.shippingAddressDto(),
-            itemsPicked = itemsPicked,
+            itemsPicked = itemsPicked.map { it.withRepeatedBinsMerged() },
             packages = packages,
             // AWB handling belongs to the original order; the addition never creates one.
             shippingDetails = ShippingDetailsDto(awbCondition = AwbCondition.CUSTOMER_CREATES)
@@ -678,3 +679,14 @@ class LocationQuantityOutboundService(
         val newQuantity: Int
     )
 }
+
+/**
+ * One source row per bin, quantities added. The pick screen builds a row per stored allocation,
+ * and a lot received with the same bin on two rows (QBI-00082) produced two rows for one bin.
+ */
+internal fun ItemPickedLocationBasedDto.withRepeatedBinsMerged(): ItemPickedLocationBasedDto = copy(
+    sourceLocations = sourceLocations
+        .groupingBy { it.locationCode }
+        .fold(0) { total, source -> total + source.quantityPicked }
+        .map { (locationCode, quantityPicked) -> SourceLocationDto(locationCode = locationCode, quantityPicked = quantityPicked) }
+)
