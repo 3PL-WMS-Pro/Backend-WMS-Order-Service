@@ -48,13 +48,16 @@ class GinDataAggregationService(
         }
         val tenantName = tenantResponse?.data?.tenantName ?: "Warehouse"
 
-        // 3. Get account/customer name
+        // 3. Get account/customer name. When the account cannot be resolved - its FreighAI customer
+        // was merged or deleted, as ALMA's 6606 was - the name saved on the order is still the
+        // customer's, and far better on their document than "Customer 6606".
+        val savedName = ofr.customerInfo.name.takeIf { it.isNotBlank() }
         val accountName = try {
             val accountNames = accountService.fetchAccountNames(listOf(ofr.accountId), authToken)
-            accountNames[ofr.accountId.toString()] ?: "Customer ${ofr.accountId}"
+            accountNames[ofr.accountId.toString()] ?: savedName ?: "Customer ${ofr.accountId}"
         } catch (e: Exception) {
             logger.warn("Failed to fetch account name", e)
-            "Customer ${ofr.accountId}"
+            savedName ?: "Customer ${ofr.accountId}"
         }
 
         // 4. Fetch dimensions for all allocated items (STANDARD_TASK_BASED)
