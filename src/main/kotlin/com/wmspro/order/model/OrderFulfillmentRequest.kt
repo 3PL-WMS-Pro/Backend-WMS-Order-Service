@@ -343,10 +343,20 @@ data class GinAttachment(
     val fileUrl: String  // S3 URL, local path, or Base64 encoded string
 )
 
+/**
+ * What was recorded when the order was loaded onto the truck.
+ *
+ * Direct orders have no loading task, so the truck and driver live here rather than in the Task
+ * Service. `truckNumber`, `driverName` and `driverPhone` are null on direct orders saved before
+ * they were added; the truck number of those orders is still on each package.
+ */
 data class LoadingDocuments(
     val packagePhotosUrls: List<String> = listOf(),
     val truckDriverPhotoUrl: String? = null,
-    val truckDriverIdProofUrl: String? = null
+    val truckDriverIdProofUrl: String? = null,
+    val truckNumber: String? = null,
+    val driverName: String? = null,
+    val driverPhone: String? = null
 )
 
 // Quantity-based fulfillment data classes (Scenarios 2 & 3)

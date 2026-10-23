@@ -206,6 +206,30 @@ class GinExcelGenerationServiceTest {
     }
 
     @Test
+    @DisplayName("names the truck and driver that took the goods, each value beside its label")
+    fun showsTruckAndDriver() {
+        val data = ginData().copy(truckNumber = "DXB A 12345", driverName = "Rahul Kumar", driverPhone = "+971 501234567")
+        val flat = flatten(service.generateGinExcel(data))
+
+        listOf("Truck No" to "DXB A 12345", "Driver" to "Rahul Kumar", "Driver Phone" to "+971 501234567")
+            .forEach { (label, value) ->
+                val at = flat.indexOf(label)
+                assertTrue(at >= 0, "the $label label must be present")
+                assertEquals(value, flat[at + 1], "the $label value must follow its label")
+            }
+    }
+
+    @Test
+    @DisplayName("an order with no truck or driver recorded shows no empty truck or driver rows")
+    fun omitsTruckAndDriverWhenAbsent() {
+        val flat = flatten(service.generateGinExcel(ginData()))
+
+        listOf("Truck No", "Driver", "Driver Phone").forEach { label ->
+            assertFalse(flat.contains(label), "$label must be left out when nothing was recorded")
+        }
+    }
+
+    @Test
     @DisplayName("a shipment with no items still produces a valid file")
     fun emptyShipmentIsSafe() {
         val flat = flatten(service.generateGinExcel(ginData(items = emptyList())))

@@ -1174,14 +1174,18 @@ class OrderFulfillmentService(
             attachments = buildGinAttachments(request.loadingDocuments)
         )
 
-        // Step 8: Build Loading Documents
-        val loadingDocuments = request.loadingDocuments?.let {
-            com.wmspro.order.model.LoadingDocuments(
-                packagePhotosUrls = it.packagePhotosUrls,
-                truckDriverPhotoUrl = it.truckDriverPhotoUrl,
-                truckDriverIdProofUrl = it.truckDriverIdProofUrl
-            )
-        }
+        // Step 8: Build Loading Documents. Built even when no documents were uploaded, because the
+        // truck and driver belong here too and a direct dispatch with no photos is the common case.
+        val driverName = request.driverName?.trim()?.takeIf { it.isNotEmpty() }
+        val driverPhone = request.driverPhone?.trim()?.takeIf { it.isNotEmpty() }
+        val loadingDocuments = com.wmspro.order.model.LoadingDocuments(
+            packagePhotosUrls = request.loadingDocuments?.packagePhotosUrls ?: listOf(),
+            truckDriverPhotoUrl = request.loadingDocuments?.truckDriverPhotoUrl,
+            truckDriverIdProofUrl = request.loadingDocuments?.truckDriverIdProofUrl,
+            truckNumber = request.truckNumber.trim(),
+            driverName = driverName,
+            driverPhone = driverPhone
+        )
 
         // Step 9: Build complete OFR
         val ofr = OrderFulfillmentRequest(
@@ -1286,7 +1290,9 @@ class OrderFulfillmentService(
             awbGenerated = awbDetails != null,
             awbDetails = awbDetails,
             createdAt = savedOfr.createdAt,
-            updatedAt = savedOfr.updatedAt
+            updatedAt = savedOfr.updatedAt,
+            driverName = driverName,
+            driverPhone = driverPhone
         )
     }
 

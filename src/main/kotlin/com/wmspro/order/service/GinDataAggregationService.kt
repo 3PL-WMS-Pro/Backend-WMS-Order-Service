@@ -130,6 +130,11 @@ class GinDataAggregationService(
             awbNumber = ofr.shippingDetails.awbNumber,
             trackingUrl = ofr.shippingDetails.trackingUrl,
             serviceType = ofr.shippingDetails.requestedServiceType?.name,
+            // Direct orders saved before the loading documents carried the truck still have it on
+            // every package. Task-based orders keep their truck in the Task Service, so it stays null.
+            truckNumber = ofr.loadingDocuments?.truckNumber ?: ofr.packages.firstNotNullOfOrNull { it.truckNumber },
+            driverName = ofr.loadingDocuments?.driverName,
+            driverPhone = ofr.loadingDocuments?.driverPhone,
             shippingAddress = shippingAddress,
             customerName = ofr.customerInfo.name,
             customerEmail = ofr.customerInfo.email,

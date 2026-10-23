@@ -85,6 +85,10 @@ class GinExcelGenerationService {
         HeaderField("Status", data.status),
         HeaderField("Date Issued", DocumentExcelWriter.formatDate(data.dateIssued)),
         HeaderField("Transaction Date", DocumentExcelWriter.formatDate(data.transactionDate)),
+        // Who took the goods away. Absent values drop out like every other optional field.
+        HeaderField("Truck No", data.truckNumber),
+        HeaderField("Driver", data.driverName),
+        HeaderField("Driver Phone", data.driverPhone),
         HeaderField("Customer Reference", data.customerRef),
         HeaderField("Warehouse Reference", data.warehouseRef),
         HeaderField("Contact Name", data.customerName),

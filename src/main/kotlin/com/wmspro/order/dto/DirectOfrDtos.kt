@@ -43,6 +43,11 @@ data class CreateDirectOfrRequest(
     @field:NotBlank(message = "Truck number is required")
     val truckNumber: String,
 
+    /** Optional. Stored on the order's loading documents and printed on the GIN data. */
+    val driverName: String? = null,
+    /** Optional. Same "+<code> <digits>" form as customerInfo.phone; not validated server-side. */
+    val driverPhone: String? = null,
+
     val loadingDocuments: LoadingDocumentsDto? = null,
 
     // Optional Fields
@@ -108,7 +113,10 @@ data class DirectOfrResponse(
     val awbGenerated: Boolean,
     val awbDetails: AwbDetailsResponse? = null,
     val createdAt: LocalDateTime,
-    val updatedAt: LocalDateTime
+    val updatedAt: LocalDateTime,
+    /** Echo of the stored driver details (trimmed; blank becomes null), so a client can confirm they were kept. */
+    val driverName: String? = null,
+    val driverPhone: String? = null
 )
 
 data class AwbDetailsResponse(

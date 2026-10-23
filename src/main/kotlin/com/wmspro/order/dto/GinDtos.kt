@@ -28,6 +28,12 @@ data class GinDataDto(
     val trackingUrl: String? = null,
     val serviceType: String? = null,
 
+    // Truck and driver of a direct order, from its loading documents. Direct orders saved before
+    // those carried the truck fall back to the truck number on their packages, and have no driver.
+    val truckNumber: String? = null,
+    val driverName: String? = null,
+    val driverPhone: String? = null,
+
     // Shipping Address (using existing DTO)
     val shippingAddress: ShippingAddressDto? = null,
 
