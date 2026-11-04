@@ -1,5 +1,6 @@
 package com.wmspro.order.dto
 
+import com.wmspro.common.utils.DocumentTime
 import java.time.LocalDate
 import java.time.LocalDateTime
 
@@ -56,7 +57,7 @@ data class GinDataDto(
     val orderValue: OrderValueDto? = null,
 
     // Additional metadata
-    val generatedAt: LocalDateTime = LocalDateTime.now(),
+    val generatedAt: LocalDateTime = DocumentTime.now(), // the warehouse's own time, not the server's UTC
     val generatedBy: String? = null
 )
 

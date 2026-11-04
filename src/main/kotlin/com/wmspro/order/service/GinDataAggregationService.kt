@@ -2,6 +2,7 @@ package com.wmspro.order.service
 
 import com.wmspro.common.service.AccountService
 import com.wmspro.common.tenant.TenantContext
+import com.wmspro.common.utils.DocumentTime
 import com.wmspro.order.client.*
 import com.wmspro.order.dto.*
 import com.wmspro.order.enums.ItemType
@@ -123,8 +124,10 @@ class GinDataAggregationService(
             fulfillmentRequestId = ofr.fulfillmentId,
             externalOrderNumber = ofr.externalOrderNumber,
             clientReferenceNum = ofr.clientReferenceNum,
-            dateIssued = ofr.fulfillmentRequestDate,
-            transactionDate = ofr.updatedAt,
+            // In the warehouse's own time: the servers run on UTC, so the GIN printed its times 4 hours
+            // early, and an order made after 8 PM in Dubai showed the previous day as its issue date.
+            dateIssued = DocumentTime.local(ofr.fulfillmentRequestDate),
+            transactionDate = DocumentTime.local(ofr.updatedAt),
             status = currentStatus,
             carrier = ofr.shippingDetails.carrier,
             awbNumber = ofr.shippingDetails.awbNumber,
@@ -146,7 +149,7 @@ class GinDataAggregationService(
             totalCBM = totalCBM,
             totalWeight = totalWeight,
             orderValue = orderValue,
-            generatedAt = LocalDateTime.now()
+            generatedAt = DocumentTime.now()
         )
     }
 
